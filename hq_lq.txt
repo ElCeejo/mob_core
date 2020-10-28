@@ -1,0 +1,179 @@
+
+ Mob Core API
+==============
+
+These functions are more used to make a mob actually do
+things, they should generally be used in the mobs logic
+function or in responce to a right-click or punch, however if
+you know what you're doing they can be used elsewhere.
+
+===============================================================================================
+
+mob_core.fall_check(self, pos, height)
+
+Checks for a fall of 'height' or more blocks from the mobs approach direction
+
+===============================================================================================
+
+mob_core.knockback(self, target)
+
+Applies knockback to target. The knockback is calculated based on self.knockback
+
+===============================================================================================
+
+mob_core.punch_timer(self, new_val)
+
+Can be used in 2 ways:
+
+1. If 'new_val' is used, the mobs punch cooldown will be set to 'new_val'
+
+2. If 'new_val' isn't used, this will being the punch cooldown
+
+This function should be used in any function where a mob is supposed to attack another
+
+===============================================================================================
+mob_core.fly_to_next_waypoint(self, pos2, speed_factor)
+
+Makes 'self' fly to 'pos'
+
+'speed_factor' is a multiplier for the mobs max_speed
+
+================================================================================================
+================================================================================================
+Mob Spawning Items==============================================================================
+================================================================================================
+================================================================================================
+
+mob_core.hq_takeoff(self, prty, lift_force)
+
+Makes the mob takeoff from it's current position
+
+'lift_force' is how fast the mob will take off
+
+================================================================================================
+
+mob_core.hq_aerial_roam(self, prty, speed_factor)
+
+Makes the mob fly around aimlessly
+
+'speed_factor' is a multiplier for the mobs max_speed
+
+================================================================================================
+
+mob_core.hq_land(self, prty[, pos2])
+
+Makes the mob land from flight
+
+if 'pos2' is used the mob will attempt to land at 'pos2'
+
+================================================================================================
+
+mob_core.hq_aerial_follow_holding(self, prty, player)
+
+Makes the mob follow 'player' if 'player' is holding something the mob follows
+
+==========================================================================================
+==========================================================================================
+On Activate Functions ====================================================================
+==========================================================================================
+==========================================================================================
+
+mob_core.hq_aqua_roam(self, prty, speed_factor, floor_cushion, surface_cushion)
+
+A slightly more advanced version of mobkits hq_aqua_roam, meant mostly for larger mobs
+
+'speed_factor' is a multiplier for the mobs max_speed
+
+'floor_cushion' is how far the mob will get to the bottom of whatever body of water it's in
+
+'surface_cushion' is how far the mob will get to the surface of whatever body of water it's in
+
+==========================================================================================
+==========================================================================================
+On Step Functions ========================================================================
+==========================================================================================
+==========================================================================================
+
+mob_core.hq_aqua_attack(self, prty, target, speed_factor)
+
+Makes the mob attack 'target' while underwater
+
+'speed_factor' is a multiplier for the mobs max_speed
+
+================================================================================================
+================================================================================================
+On Rightclick Functions ========================================================================
+================================================================================================
+================================================================================================
+
+mob_core.swim_to_next_waypoint(self, pos2, speed_factor)
+
+Makes the mob swim to 'pos2'
+
+'speed_factor' is a multiplier for the mobs max_speed
+
+================================================================================================
+
+mob_core.hq_aqua_follow_holding(self, prty, player)
+
+Makes the mob follow 'player' if 'player' is holding something the mob follows
+
+================================================================================================
+
+mob_core.hq_follow_holding(self, prty, player, stop_threshold)
+
+Makes the mob follow player if 'player' is holding something
+the mob follows
+
+'stop_threshold' is how far away the player has to be before
+the mob pauses
+
+================================================================================================
+
+mob_core.is_neighbor_node_reachable(self, neighbor)
+
+Same as the mobkit function, but with support for
+self.ignore_liquidflag
+
+================================================================================================
+
+mob_core.get_next_waypoint(self, tpos)
+
+Same as the mobkit function, but with support for
+self.ignore_liquidflag
+
+================================================================================================
+
+mob_core.goto_next_waypoint(self, tpos)
+
+Same as the mobkit function, but with support for
+self.ignore_liquidflag and large collisionboxes
+
+================================================================================================
+
+mob_core.dumbstep(self,tpos, speed_factor, idle_duration)
+
+Same as the mobkit function, but with support for
+self.ignore_liquidflag and large collisionboxes
+
+================================================================================================
+
+mob_core.hq_roam(self, prty)
+
+Same as the mobkit function, but with support for
+self.ignore_liquidflag, large collisionboxes, and self.max_fall
+
+================================================================================================
+
+mob_core.hq_hunt(self, prty, target)
+
+Same as the mobkit function, but with support for
+self.ignore_liquidflag, large collisionboxes and
+self.max_fall. No longer jumps, just punches when
+'target' is reachable.
+
+================================================================================================
+
+mob_core.hq_attack(self, prty, target)
+
+Punches 'target' if 'target' is within reach

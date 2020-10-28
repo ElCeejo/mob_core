@@ -1,0 +1,204 @@
+
+ Mob Core API
+==============
+
+These functions are simple functions that are meant to be
+used to check if mob A can/should do something to mob B,
+damage a mob, heal mob, etc. 
+
+===============================================================================================
+New Mob Definition Variables
+===============================================================================================
+
+-- Aerial Movement
+
+soar_height (number)
+
+	How far above ground the mob must be before it starts free flying
+
+-- Aquatic Movement
+
+turn_rate (number)
+
+	How fast (in radians/sec) the mob turns
+
+obstacle_avoidance_range (number)
+
+	The range that an aquatic mob will check for obstacles in
+
+surface_avoidance_range (number)
+
+	How close from the center of it's collision box a mob will get to the surface of a body of water
+
+floor_avoidance_range (number)
+
+	How close from the center of it's collision box a mob will get to the bottom of a body of water
+
+ignore_liquidflag (boolean)
+
+	If true, the mob will not avoid water (only works for mobs that use mob core replacements for mobkit functions)
+
+-- Combat
+
+defend_owner (boolean)
+
+	If true, when a nearby mob is punched by this mbos owner, it's objectref will be assigned to the self.owner_target variable
+
+punch_cooldown (number)
+
+	The cooldown (in seconds) on a mobs punch attack
+
+targets (table)
+
+	table of entity names the mob should attack
+
+===============================================================================================
+
+mob_core.get_name_proper(str)
+
+Formats a string to be readable.
+ex: "mymobs:saltwater_crocodile" > "Saltwater Crocodile"
+
+===============================================================================================
+
+mob_core.is_mobkit_mob(object)
+
+Checks if 'object' uses mobkit
+
+===============================================================================================
+
+mob_core.shared_owner(self, object)
+
+Checks if 'self' and 'object' share an owner
+
+===============================================================================================
+
+mob_core.follow_holding(self, player)
+
+Checks if 'player' is holding an item that
+'self' is supposed to follow
+
+================================================================================================
+================================================================================================
+Mob Spawning Items==============================================================================
+================================================================================================
+================================================================================================
+
+mob_core.register_spawn_egg(mob, col1, col2)
+
+'mob' is the name of the mob the egg is for
+ex: "mymobs:wolf"
+
+'col1' is the base color of the egg in hex
+
+'col2' is the overlay color of the egg in hex
+
+================================================================================================
+
+mob_core.register_set(mob, background, mask)
+
+'mob' is the name of the mob the egg is for
+ex: "mymobs:wolf"
+
+'background' is the inventory image for the
+mob once captured
+
+'mask' is boolean, when set to true it uses
+the egg texture and applies 'background'
+as a mask overlay
+
+================================================================================================
+
+mob_core.random_sound(self, chance)
+
+'chance' is the odds (1 out of 'chance')
+that the mobs random sound will play
+
+================================================================================================
+
+mob_core.item_drop(self)
+
+drops items from the mobs 'drop' variable when called
+
+
+==========================================================================================
+==========================================================================================
+On Activate Functions ====================================================================
+==========================================================================================
+==========================================================================================
+
+mob_core.on_activate(self, staticdata, dtime_s)
+
+This should be used in place of the mobkit actfunc,
+if you need your own then remember to keep any
+variables that are required for mobs to work properly
+or include this within it.
+
+==========================================================================================
+==========================================================================================
+On Step Functions ========================================================================
+==========================================================================================
+==========================================================================================
+
+mob_core.on_step(self, dtime, moveresult)
+
+This should be used in place of the mobkit stepfunc,
+if you need your own then put this in it instead of
+replacing it.
+
+================================================================================================
+================================================================================================
+On Rightclick Functions ========================================================================
+================================================================================================
+================================================================================================
+
+mob_core.mount(self, clicker)
+
+Mounts 'clicker' to object
+
+================================================================================================
+
+mob_core.capture_mob(self, clicker, capture_tool, capture_chance, wear, force_take)
+
+Adds mob to 'clicker's inventory
+
+'capture_tool' is the item that the mob can be captured with
+
+'capture_chance' is the chance (1 out of 'capture_chance')
+that the mob will be caught
+
+'wear' is the wear added to the item used, can be left nil
+
+'force_take' is boolean, if true, the mob can be captured by
+anyone. If false or nil, only the owner can catch the mob
+
+================================================================================================
+
+mob_core.feed_tame(self, clicker, feed_count, tame, breed)
+
+'feed_count' is the amount of times the mob must
+be fed until it's at full health
+
+'tame' is boolean, if true, the mob will be tamed
+once 'feed_count' is reached
+
+'breed' is boolean, if true, the mob will attempt
+to breed once 'feed_count' is reached
+
+================================================================================================
+
+mob_core.protect(self, clicker, force_protect)
+
+Allows mob to be protected with a Protection Gem
+
+'force_protect' is boolean, if true, mob can be
+protected by anyone. If false or nil, only the
+owner can protect the mob
+
+================================================================================================
+
+mob_core.nametag(self, clicker)
+
+Allows mob to be named with a Nametag
+
+================================================================================================
