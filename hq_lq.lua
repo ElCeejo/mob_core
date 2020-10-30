@@ -12,6 +12,8 @@ local pi = math.pi
 local abs = math.abs
 local ceil = math.ceil
 
+local vec_dist = vector.distance
+
 local abr = minetest.get_mapgen_setting('active_block_range')
 local legacy_jump = minetest.settings:get_bool("legacy_jump")
 
@@ -36,13 +38,18 @@ end)
 -- Quick Callbacks --
 ---------------------
 
+--[[local function get_distance(a, b)
+
+if not a or not b then return 50 end -- nil check
+
+local x, y, z = a.x - b.x, a.y - b.y, a.z - b.z
+
+return sqrt(x * x + y * y + z * z)
+end]]
+
 -- Current Collisionbox --
 
 local function hitbox(self) return self.object:get_properties().collisionbox end
-
--- Difference between 2 number values --
-
-local function diff(a, b) return math.abs(a - b) end
 
 --------------------
 -- Object Control --
@@ -60,46 +67,80 @@ end
 -- Sensors --
 -------------
 
--- Can Fit --
-
-local function aqua_can_fit(self, pos)
+local function index_collisions(self, pos, no_air)
     local width = self.object:get_properties().collisionbox[4] + 1
     local pos1 = vector.subtract(pos, width)
     local pos2 = vector.add(pos, width)
-    local walkable = {}
+    local collisions = {}
     for x = pos1.x, pos2.x do
         for y = pos1.y, pos2.y do
             for z = pos1.z, pos2.z do
                 local npos = vector.new(x, y, z)
                 local name = minetest.get_node(npos).name
-                if not minetest.registered_nodes[name].groups.water then
-                    return false
+                if minetest.registered_nodes[name].walkable or
+                    (no_air and name == "air") then
+                    table.insert(collisions, npos)
                 end
+            end
+        end
+    end
+    return collisions
+end
+
+-- Can Fit --
+
+function mob_core.can_fit(self, pos, no_air)
+    local width = hitbox(self)[4] + 1
+    local height = self.height * 0.5
+    local pos1 = vector.new(pos.x - width, pos.y - height, pos.z - width)
+    local pos2 = vector.new(pos.x + width, pos.y + height, pos.z + width)
+    for x = pos1.x, pos2.x do
+        for y = pos1.y, pos2.y do
+            for z = pos1.z, pos2.z do
+                local npos = vector.new(x, y, z)
+                local name = minetest.get_node(npos).name
+                if not minetest.registered_nodes[name].walkable or
+                    (no_air and name == "air") then return false end
             end
         end
     end
     return true
 end
 
--- Find Collision Within Radius --
+-- Obstacle Avoidance Calculation --
 
-local function find_collision(self, radius, vertical)
-    vertical = vertical or radius
-    local pos = self.object:get_pos()
-    local pos1 = {x = pos.x + radius, y = pos.y + vertical, z = pos.z + radius}
-    local pos2 = {x = pos.x - radius, y = pos.y - vertical, z = pos.z - radius}
-    local area = minetest.find_nodes_in_area(pos1, pos2, walkable_nodes)
-    local collision = collision or nil
-    if #area < 1 then return end
-    for i = 1, #area do
-        local yaw = self.object:get_yaw()
-        local yaw_to_node = minetest.dir_to_yaw(vector.direction(pos, area[i]))
-        if abs(yaw - yaw_to_node) <= 1.5 then
-            collision = area[i]
-            break
+local function find_closest_pos(tbl, pos)
+    local iter = 2
+    if #tbl < 2 then return end
+    local closest = tbl[1]
+    while iter < #tbl do
+        if vec_dist(pos, closest) < vec_dist(pos, tbl[iter + 1]) then
+            iter = iter + 1
+        else
+            closest = tbl[iter]
+            iter = iter + 1
         end
     end
-    return collision
+    if iter >= #tbl and closest then return closest end
+end
+
+local function collision_avoidance(self)
+    local box = hitbox(self)
+    local width = abs(box[3]) + abs(box[6])
+    local pos = self.object:get_pos()
+    local yaw = self.object:get_yaw()
+    local outset = self.obstacle_avoidance_range or 1
+    local ahead = vector.add(pos, vector.multiply(minetest.yaw_to_dir(yaw),
+                                                  width * outset))
+    local can_fit = mob_core.can_fit(self, ahead)
+    local collisions = index_collisions(self, ahead)
+    local obstacle = find_closest_pos(collisions, pos)
+    if not can_fit and obstacle then
+        local avoidance_path =
+            vector.normalize((vector.subtract(pos, obstacle)))
+        local magnitude = (width * 2) - vec_dist(pos, obstacle)
+        return avoidance_path, magnitude
+    end
 end
 
 -- Find Water Surface --
@@ -184,6 +225,7 @@ end
 -- Check for a Step --
 
 local function step_check(self) -- This function is only used to find a step for pre 5.3 mobs
+    if not legacy_jump then return end
     local pos = mobkit.get_stand_pos(self)
     local width = hitbox(self)[4] + 0.3
     local pos1 = {x = pos.x + width, y = pos.y + 1.1, z = pos.z + width}
@@ -278,78 +320,60 @@ end
 -- Aerial --
 ------------
 
-local lift = 0
-
 function mob_core.fly_to_next_waypoint(self, pos2, speed_factor)
     speed_factor = speed_factor or 0.75
-    local tyaw = 0
-    local init = true
-    local col_range_multiplier = 4
-    if hitbox(self)[4] < 1 then col_range_multiplier = 8 end
-    if init then
-        mobkit.animate(self, "fly")
-        init = false
-    end
+    if not self.flyto_yaw then self.flyto_yaw = 0 end
+    if not self.flyto_lift then self.flyto_lift = 0 end
+    mobkit.animate(self, "fly")
     local pos = mobkit.get_stand_pos(self)
-    local yaw = self.object:get_yaw()
-    local right = vector.add(pos,
-                             vector.multiply(minetest.yaw_to_dir(yaw - 1), 6))
-    local left = vector.add(pos,
-                            vector.multiply(minetest.yaw_to_dir(yaw + 1), 6))
-    -- Collision
-    local collision = find_collision(self, abs(hitbox(self)[4]) *
-                                         col_range_multiplier,
-                                     abs(hitbox(self)[4]) * 2)
-    -- Ceiling
+    local steer_to, turn_intensity = collision_avoidance(self)
     local ceiling = sensor_ceil(self, self.view_range)
 
     -- Basic Movement
     if self.isonground or self.isinliquid then return end
 
     if ceiling <= self.height * 2 then
-        if lift > -1 then lift = lift - 0.2 end
-    end
-
-    if collision then
-        local left_dist = vector.distance(collision, left)
-        local right_dist = vector.distance(collision, right)
-        if collision.y > pos.y - self.height then
-            if lift > -1 then lift = lift - 0.2 end
-        end
-        if math.min(diff(left_dist, right_dist)) <= 3 then
-            tyaw = minetest.dir_to_yaw(vector.direction(pos, collision)) - pi /
-                       2
-        end
-        if left_dist > right_dist then
-            tyaw = minetest.dir_to_yaw(vector.direction(pos, left))
-        elseif right_dist > left_dist then
-            tyaw = minetest.dir_to_yaw(vector.direction(pos, right))
+        if self.flyto_lift > -1 then
+            self.flyto_lift = self.flyto_lift - 0.2
         end
     end
 
-    tyaw = minetest.dir_to_yaw(vector.direction(pos, pos2))
+    self.flyto_yaw = minetest.dir_to_yaw(vector.direction(pos, pos2))
+
+    if steer_to then self.flyto_yaw = minetest.dir_to_yaw(steer_to) end
 
     if pos2.y - pos.y > self.height then
-        if lift > -(self.max_speed * speed_factor) then lift = lift - 0.2 end
+        if self.flyto_lift > -(self.max_speed * speed_factor) then
+            self.flyto_lift = self.flyto_lift - 0.2
+        end
     elseif pos.y - pos2.y > self.height then
-        if lift < self.max_speed * speed_factor then lift = lift + 0.2 end
+        if self.flyto_lift < self.max_speed * speed_factor then
+            self.flyto_lift = self.flyto_lift + 0.2
+        end
     else
-        if lift < 0 then lift = lift + 0.2 end
-        if lift > 0 then lift = lift - 0.2 end
+        if self.flyto_lift < 0 then
+            self.flyto_lift = self.flyto_lift + 0.2
+        end
+        if self.flyto_lift > 0 then
+            self.flyto_lift = self.flyto_lift - 0.2
+        end
     end
 
     if mobkit.timer(self, 1) then
         local dir = vector.direction(pos, pos2)
         if dir.y > 0 then
-            lift = math.ceil(dir.y * self.max_speed)
+            self.flyto_lift = math.ceil(dir.y * self.max_speed)
         else
-            lift = math.floor(dir.y * self.max_speed)
+            self.flyto_lift = math.floor(dir.y * self.max_speed)
         end
     end
-    local dist = vector.distance(pos, pos2)
+    local dist = vec_dist(pos, pos2)
     if dist < self.collisionbox[4] then return true end
-    mobkit.turn2yaw(self, tyaw, 3)
-    set_lift(self, lift)
+
+    if not turn_intensity or turn_intensity < 1 then turn_intensity = 1 end
+
+    mobkit.turn2yaw(self, self.flyto_yaw, (self.turn_rate or 2) * turn_intensity)
+    set_lift(self, self.flyto_lift)
     mobkit.go_forward_horizontal(self, self.max_speed * speed_factor)
 end
 
@@ -357,47 +381,24 @@ end
 
 function mob_core.hq_takeoff(self, prty, lift_force)
     local tyaw = 0
-    local init = true
-    local col_range_multiplier = 4
     local lift = 0
+    local init = false
     local func = function(self)
-        if hitbox(self)[4] < 1 then col_range_multiplier = 8 end
-        if init then
+        if not init then
             mobkit.animate(self, "stand")
-            init = false
+            init = true
         end
-        local pos = mobkit.get_stand_pos(self)
         local yaw = self.object:get_yaw()
         local vel = self.object:get_velocity()
-        local right = vector.add(pos, vector.multiply(
-                                     minetest.yaw_to_dir(yaw - 1), 6))
-        local left = vector.add(pos, vector.multiply(
-                                    minetest.yaw_to_dir(yaw + 1), 6))
-        local yaw = self.object:get_yaw()
-        -- Collision
-        local collision = find_collision(self, abs(hitbox(self)[4]) *
-                                             col_range_multiplier)
-        -- Ceiling
+        local steer_to, turn_intensity = collision_avoidance(self)
         local ceiling = sensor_ceil(self, self.view_range)
-        -- Floor
         local floor = sensor_floor(self, self.view_range, true)
 
         if vel.y > 0 then mobkit.animate(self, "fly") end
 
         if self.isonground or self.isinliquid then
-            if collision and collision.y >= pos.y + self.height then
-                local left_dist = vector.distance(collision, left)
-                local right_dist = vector.distance(collision, right)
-                if diff(left_dist, right_dist) < 2.5 then
-                    tyaw =
-                        minetest.dir_to_yaw(vector.direction(pos, collision)) -
-                            pi / 2
-                end
-                if left_dist > right_dist then
-                    tyaw = minetest.dir_to_yaw(vector.direction(pos, left))
-                elseif right_dist > left_dist then
-                    tyaw = minetest.dir_to_yaw(vector.direction(pos, right))
-                end
+            if steer_to then
+                tyaw = minetest.dir_to_yaw(steer_to)
             else
                 local dir = minetest.yaw_to_dir(yaw)
                 dir.y = dir.y + self.height
@@ -407,22 +408,7 @@ function mob_core.hq_takeoff(self, prty, lift_force)
 
         if ceiling > self.height then lift = lift_force end
 
-        if collision then
-            local left_dist = vector.distance(collision, left)
-            local right_dist = vector.distance(collision, right)
-            if collision.y > pos.y - self.height then
-                if lift > -1 then lift = lift - 0.2 end
-            end
-            if diff(left_dist, right_dist) < 2.5 then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, collision)) -
-                           pi / 2
-            end
-            if left_dist > right_dist then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, left))
-            elseif right_dist > left_dist then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, right))
-            end
-        end
+        if steer_to then tyaw = minetest.dir_to_yaw(steer_to) end
 
         if ceiling < self.height and floor < self.height then
             mob_core.hq_land(self, prty + 1)
@@ -438,13 +424,16 @@ function mob_core.hq_takeoff(self, prty, lift_force)
         end
 
         if vector.length(self.object:get_velocity()) > self.max_speed then
-            local vel = self.object:get_velocity()
             self.object:set_velocity(vector.multiply(vel, 0.5))
             self.object:set_acceleration({x = 0, y = 0.1, z = 0})
         end
 
+        if not turn_intensity or turn_intensity < 1 then
+            turn_intensity = 1
+        end
+
+        mobkit.turn2yaw(self, tyaw, (self.turn_rate or 2) * turn_intensity)
         set_lift(self, lift)
-        mobkit.turn2yaw(self, tyaw, turn_rate)
         mobkit.go_forward_horizontal(self, self.max_speed)
     end
     mobkit.queue_high(self, func, prty)
@@ -455,27 +444,18 @@ end
 function mob_core.hq_aerial_roam(self, prty, speed_factor)
     local tyaw = 0
     local lift = 0
-    local turn_rate = self.turn_rate or 2
     local center = self.object:get_pos()
-    local col_range_multiplier = 4
+    local init = false
     local func = function(self)
-        if hitbox(self)[4] < 1 then col_range_multiplier = 8 end
-        mobkit.animate(self, "fly")
+        if not init then
+            mobkit.animate(self, 'fly')
+            init = true
+        end
         local pos = mobkit.get_stand_pos(self)
-        local yaw = self.object:get_yaw()
-        local right = vector.add(pos, vector.multiply(
-                                     minetest.yaw_to_dir(yaw - 1), 6))
-        local left = vector.add(pos, vector.multiply(
-                                    minetest.yaw_to_dir(yaw + 1), 6))
-        -- Collision
-        local collision = find_collision(self, abs(hitbox(self)[4]) *
-                                             col_range_multiplier,
-                                         abs(hitbox(self)[4]) * 2)
-        -- Ceiling
+        local steer_to, turn_intensity = collision_avoidance(self)
         local ceiling = sensor_ceil(self, self.view_range)
-        -- Floor
         local floor = sensor_floor(self, self.view_range, true)
-        --  Height Control
+
         if floor and floor <= self.soar_height then
             if lift < 1 then lift = lift + 0.2 end
         end
@@ -483,25 +463,8 @@ function mob_core.hq_aerial_roam(self, prty, speed_factor)
             if lift > -1 then lift = lift - 0.2 end
         end
 
-        if collision then
-            local left_dist = vector.distance(collision, left)
-            local right_dist = vector.distance(collision, right)
-            if collision.y > pos.y - self.height then
-                if lift > -1 then lift = lift - 0.2 end
-            end
-            if math.min(diff(left_dist, right_dist)) <= 3 then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, collision)) -
-                           pi / 2
-            end
-            if left_dist > right_dist then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, left))
-            elseif right_dist > left_dist then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, right))
-            end
-        end
-        -- Stay close to original position
         if mobkit.timer(self, 1) then
-            if vector.distance(pos, center) > abr * 16 * 0.5 then
+            if vec_dist(pos, center) > abr * 16 * 0.5 then
                 tyaw = minetest.dir_to_yaw(
                            vector.direction(pos, {
                         x = center.x + random() * 10 - 5,
@@ -515,18 +478,25 @@ function mob_core.hq_aerial_roam(self, prty, speed_factor)
             end
             if floor and floor > self.soar_height then lift = 0.1 end
         end
-        -- Ocassionally go down
+
+        if steer_to then tyaw = minetest.dir_to_yaw(steer_to) end
+
         if mobkit.timer(self, random(1, 16)) then
             if floor and floor > self.soar_height then lift = -0.2 end
         end
-        -- Set Velocity
-        set_lift(self, lift)
+
         if lift < 0 then
             self.object:set_acceleration({x = 0, y = 0.1, z = 0})
         else
             self.object:set_acceleration({x = 0, y = 0, z = 0})
         end
-        mobkit.turn2yaw(self, tyaw, turn_rate)
+
+        if not turn_intensity or turn_intensity < 1 then
+            turn_intensity = 1
+        end
+
+        mobkit.turn2yaw(self, tyaw, (self.turn_rate or 2) * turn_intensity)
+        set_lift(self, lift)
         mobkit.go_forward_horizontal(self, self.max_speed * speed_factor)
     end
     mobkit.queue_high(self, func, prty)
@@ -535,17 +505,16 @@ end
 -- Land --
 
 function mob_core.hq_land(self, prty, pos2)
-    local init = true
+    local init = false
     local func = function(self)
-        if init then
+        if not init then
             mobkit.animate(self, 'fly')
-            init = false
+            init = true
         end
-        -- Ground
         local floor = sensor_floor(self, self.view_range, true)
         if pos2 then
             local pos = self.object:get_pos()
-            if vector.distance(pos, pos2) > self.height + 1 then
+            if vec_dist(pos, pos2) > self.height + 1 then
                 mobkit.turn2yaw(self, minetest.dir_to_yaw(
                                     vector.direction(pos, pos2)))
                 set_lift(self, -self.max_speed / 2)
@@ -578,18 +547,56 @@ end
 -- Follow Holding --
 
 function mob_core.hq_aerial_follow_holding(self, prty, player) -- Follow Player
+    local tyaw = 0
+    local lift = 0
+    local init = false
     if not player then return end
     if not mob_core.follow_holding(self, player) then return end
     local func = function(self)
         if mobkit.is_queue_empty_low(self) then
             if mob_core.follow_holding(self, player) then
+                if not init then
+                    mobkit.animate(self, "fast" or "fly")
+                end
+                self.status = mobkit.remember(self, "status", "following")
                 local pos = mobkit.get_stand_pos(self)
                 local tpos = player:get_pos()
-                local yaw = self.object:get_yaw()
-                mobkit.animate(self, "fast" or "swim")
-                self.status = mobkit.remember(self, "status", "following")
-                mobkit.clear_queue_low(self)
-                mob_core.fly_to_next_waypoint(self, tpos, 1)
+
+                local steer_to, turn_intensity = collision_avoidance(self)
+                local ceiling = sensor_ceil(self, self.view_range)
+                local floor = sensor_floor(self, self.view_range, true)
+
+                local dir = vector.direction(pos, tpos)
+
+                lift = dir.y
+
+                if floor and floor <= self.soar_height then
+                    if lift < 1 then lift = lift + 0.2 end
+                end
+                if ceiling and ceiling <= math.abs(self.view_range / 4) then
+                    if lift > -1 then lift = lift - 0.2 end
+                end
+
+                tyaw = minetest.dir_to_yaw(dir)
+
+                if steer_to then
+                    tyaw = minetest.dir_to_yaw(steer_to)
+                end
+
+                if lift < 0 then
+                    self.object:set_acceleration({x = 0, y = 0.1, z = 0})
+                else
+                    self.object:set_acceleration({x = 0, y = 0, z = 0})
+                end
+
+                if not turn_intensity or turn_intensity < 1 then
+                    turn_intensity = 1
+                end
+
+                mobkit.turn2yaw(self, tyaw,
+                                (self.turn_rate or 2) * turn_intensity)
+                set_lift(self, lift)
+                mobkit.go_forward_horizontal(self, self.max_speed)
             end
         end
         if (self.status == "following" and
@@ -659,7 +666,6 @@ end
 function mob_core.hq_aqua_roam(self, prty, speed_factor)
     local tyaw = 0
     local lift = 0
-    local last_submerged = {}
     local center = self.object:get_pos()
     local init = false
     local func = function(self)
@@ -669,22 +675,8 @@ function mob_core.hq_aqua_roam(self, prty, speed_factor)
             init = true
         end
         local pos = self.object:get_pos()
-        local yaw = self.object:get_yaw()
-        -- Right Offset
-        local right = vector.add(pos, vector.multiply(
-                                     minetest.yaw_to_dir(yaw - 1), 6))
-        -- Left Offset
-        local left = vector.add(pos, vector.multiply(
-                                    minetest.yaw_to_dir(yaw + 1), 6))
-        -- Collision Detection
-        local collision = find_collision(self, self.obstacle_avoidance_range,
-                                         self.height / 2)
-        -- Forward Offset
-        local dest = vector.add(pos, vector.multiply(minetest.yaw_to_dir(yaw),
-                                                     self.obstacle_avoidance_range))
-        -- Distance to surface
+        local steer_to, turn_intensity = collision_avoidance(self)
         local surface = sensor_surface(self, self.view_range)
-        -- Distance to floor
         local floor = sensor_floor(self, self.view_range)
 
         if floor <= self.floor_avoidance_range then
@@ -696,7 +688,7 @@ function mob_core.hq_aqua_roam(self, prty, speed_factor)
         end
 
         if mobkit.timer(self, 1) then
-            if vector.distance(pos, center) > abr * 16 * 0.5 then
+            if vec_dist(pos, center) > abr * 16 * 0.5 then
                 tyaw = minetest.dir_to_yaw(
                            vector.direction(pos, {
                         x = center.x + random() * 10 - 5,
@@ -713,38 +705,7 @@ function mob_core.hq_aqua_roam(self, prty, speed_factor)
             end
         end
 
-        if collision then
-            local left_dist = vector.distance(collision, left)
-            local right_dist = vector.distance(collision, right)
-            if math.min(diff(left_dist, right_dist)) <= 3 then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, collision)) -
-                           pi / 2
-            end
-            if random(1, vector.distance(pos, collision)) == 1 then
-                if left_dist > right_dist then
-                    tyaw = minetest.dir_to_yaw(vector.direction(pos, left))
-                elseif right_dist > left_dist then
-                    tyaw = minetest.dir_to_yaw(vector.direction(pos, right))
-                end
-            end
-            if collision.y < pos.y and vector.distance(pos, collision) <
-                self.surface_avoidance_range then
-                if lift < 1 then lift = lift + 0.2 end
-            end
-
-            if collision.y > pos.y and vector.distance(pos, collision) <
-                self.floor_avoidance_range then
-                if lift > -1 then lift = lift - 0.2 end
-            end
-        end
-
-        if not aqua_can_fit(self, dest) then
-            if aqua_can_fit(self, left) then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, dest)) + pi / 2
-            else
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, dest)) - pi / 2
-            end
-        end
+        if steer_to then tyaw = minetest.dir_to_yaw(steer_to) end
 
         if mobkit.timer(self, random(3, 6)) then -- Ocassionally go down
             if floor > self.floor_avoidance_range and surface >
@@ -756,13 +717,19 @@ function mob_core.hq_aqua_roam(self, prty, speed_factor)
                 end
             end
         end
+
         if lift < 0 then
             self.object:set_acceleration({x = 0, y = 0.1, z = 0})
         else
             self.object:set_acceleration({x = 0, y = 0, z = 0})
         end
+
+        if not turn_intensity or turn_intensity < 1 then
+            turn_intensity = 1
+        end
+
+        mobkit.turn2yaw(self, tyaw, (self.turn_rate or 2) * turn_intensity)
         set_lift(self, lift)
-        mobkit.turn2yaw(self, tyaw, self.turn_rate or 2)
         mobkit.go_forward_horizontal(self, self.max_speed * speed_factor)
     end
     mobkit.queue_high(self, func, prty)
@@ -773,12 +740,12 @@ end
 function mob_core.hq_aqua_attack(self, prty, target)
     local tyaw = 0
     local lift = 0
-    local turn_intensity = 1
-    local center = self.object:get_pos()
     local init = false
     local func = function(self)
         if not self.isinliquid or not mobkit.is_alive(target) or
-            not aqua_can_fit(self, target:get_pos()) then return true end
+            not mob_core.can_fit(self, target:get_pos(), true) then
+            return true
+        end
         if not init then
             mobkit.animate(self, "swim")
             init = true
@@ -786,22 +753,8 @@ function mob_core.hq_aqua_attack(self, prty, target)
         local pos = self.object:get_pos()
         local tpos = target:get_pos()
         local yaw = self.object:get_yaw()
-        local radius = self.view_range / hitbox(self)[4]
-        -- Right Offset
-        local right = vector.add(pos, vector.multiply(
-                                     minetest.yaw_to_dir(yaw - 1), 6))
-        -- Left Offset
-        local left = vector.add(pos, vector.multiply(
-                                    minetest.yaw_to_dir(yaw + 1), 6))
-        -- Collision Detection
-        local collision = find_collision(self, self.obstacle_avoidance_range,
-                                         self.height / 2)
-        -- Forward Offset
-        local dest = vector.add(pos, vector.multiply(minetest.yaw_to_dir(yaw),
-                                                     self.obstacle_avoidance_range))
-        -- Distance to surface
+        local steer_to, turn_intensity = collision_avoidance(self)
         local surface = sensor_surface(self, self.view_range)
-        -- Distance to floor
         local floor = sensor_floor(self, self.view_range)
 
         local dir = vector.direction(pos, tpos)
@@ -816,43 +769,7 @@ function mob_core.hq_aqua_attack(self, prty, target)
             if lift > -1 then lift = lift - 0.2 end
         end
 
-        tyaw = minetest.dir_to_yaw(dir)
-
-        if not aqua_can_fit(self, dest) then
-            if aqua_can_fit(self, left) then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, dest)) + pi / 2
-            elseif aqua_can_fit(self, right) then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, dest)) - pi / 2
-            end
-        end
-
-        if collision then
-
-            local left_dist = vector.distance(collision, left)
-            local right_dist = vector.distance(collision, right)
-            if math.min(diff(left_dist, right_dist)) <= 3 then
-                tyaw = minetest.dir_to_yaw(vector.direction(pos, collision)) -
-                           pi / 2
-            end
-            if random(1, vector.distance(pos, collision)) == 1 then
-                if left_dist > right_dist then
-                    tyaw = minetest.dir_to_yaw(vector.direction(pos, left))
-                elseif right_dist > left_dist then
-                    tyaw = minetest.dir_to_yaw(vector.direction(pos, right))
-                end
-            end
-            if collision.y < pos.y and vector.distance(pos, collision) <
-                self.surface_avoidance_range then
-                if lift < 1 then lift = lift + 0.2 end
-            end
-
-            if collision.y > pos.y and vector.distance(pos, collision) <
-                self.floor_avoidance_range then
-                if lift > -1 then lift = lift - 0.2 end
-            end
-        end
-
-        mobkit.turn2yaw(self, tyaw, self.turn_rate or 2)
+        if steer_to then tyaw = minetest.dir_to_yaw(steer_to) end
 
         if lift < 0 then
             self.object:set_acceleration({x = 0, y = 0.1, z = 0})
@@ -860,10 +777,9 @@ function mob_core.hq_aqua_attack(self, prty, target)
             self.object:set_acceleration({x = 0, y = 0, z = 0})
         end
 
-        local dist = vector.distance(pos, tpos)
         local target_side = abs(target:get_properties().collisionbox[4])
 
-        if vector.distance(pos, tpos) < self.reach + target_side then
+        if vec_dist(pos, tpos) < self.reach + target_side then
             target:punch(self.object, 1.0, {
                 full_punch_interval = 0.1,
                 damage_groups = {fleshy = self.damage}
@@ -877,6 +793,12 @@ function mob_core.hq_aqua_attack(self, prty, target)
             mobkit.hq_aqua_turn(self, prty, yaw - pi, self.max_speed)
             return true
         end
+
+        if not turn_intensity or turn_intensity < 1 then
+            turn_intensity = 1
+        end
+
+        mobkit.turn2yaw(self, tyaw, (self.turn_rate or 2) * turn_intensity)
         set_lift(self, lift)
         mobkit.go_forward_horizontal(self, self.max_speed)
     end
@@ -886,17 +808,17 @@ end
 -- Swim from/Runaway --
 
 function mob_core.hq_swimfrom(self, prty, target, speed)
-    local init = true
+    local init = false
     local timer = 6
     local func = function(self)
         if not mobkit.is_alive(target) then return true end
         if not self.isinliquid then return true end
-        if init then
+        if not init then
             timer = timer - self.dtime
-            if timer <= 0 or
-                vector.distance(self.object:get_pos(), target:get_pos()) < 8 then
+            if timer <= 0 or vec_dist(self.object:get_pos(), target:get_pos()) <
+                8 then
                 mobkit.make_sound(self, 'scared')
-                init = false
+                init = true
             end
             return
         end
@@ -904,7 +826,7 @@ function mob_core.hq_swimfrom(self, prty, target, speed)
         local chase_pos = target:get_pos()
         local dir = vector.direction(pos, chase_pos)
         local yaw = minetest.dir_to_yaw(dir) - (pi / 2)
-        local dist = vector.distance(pos, chase_pos)
+        local dist = vec_dist(pos, chase_pos)
         if (dist / 1.5) < self.view_range then
             local swimto, height = aqua_radar_dumb(pos, yaw, 3)
             if height and height > pos.y then
@@ -924,33 +846,23 @@ end
 -- Aquatic Follow --
 
 function mob_core.hq_aqua_follow_holding(self, prty, player) -- Follow Player
+    local tyaw = 0
+    local lift = 0
+    local init = false
     if not player then return end
     if not mob_core.follow_holding(self, player) then return end
     local func = function(self)
         if mobkit.is_queue_empty_low(self) then
             if mob_core.follow_holding(self, player) then
+                if not init then
+                    mobkit.animate(self, "fast" or "swim")
+                end
                 local pos = mobkit.get_stand_pos(self)
                 local tpos = player:get_pos()
-                local yaw = self.object:get_yaw()
-                mobkit.animate(self, "fast" or "swim")
+
                 self.status = mobkit.remember(self, "status", "following")
-                -- Right Offset
-                local right = vector.add(pos, vector.multiply(
-                                             minetest.yaw_to_dir(yaw - 1), 6))
-                -- Left Offset
-                local left = vector.add(pos, vector.multiply(
-                                            minetest.yaw_to_dir(yaw + 1), 6))
-                -- Collision Detection
-                local collision = find_collision(self,
-                                                 self.obstacle_avoidance_range,
-                                                 self.height / 2)
-                -- Forward Offset
-                local dest = vector.add(pos, vector.multiply(
-                                            minetest.yaw_to_dir(yaw),
-                                            self.obstacle_avoidance_range))
-                -- Distance to surface
+                local steer_to, turn_intensity = collision_avoidance(self)
                 local surface = sensor_surface(self, self.view_range)
-                -- Distance to floor
                 local floor = sensor_floor(self, self.view_range)
 
                 local dir = vector.direction(pos, tpos)
@@ -967,74 +879,30 @@ function mob_core.hq_aqua_follow_holding(self, prty, player) -- Follow Player
 
                 tyaw = minetest.dir_to_yaw(dir)
 
-                if not aqua_can_fit(self, dest) then
-                    if aqua_can_fit(self, left) then
-                        tyaw =
-                            minetest.dir_to_yaw(vector.direction(pos, dest)) +
-                                pi / 2
-                    elseif aqua_can_fit(self, right) then
-                        tyaw =
-                            minetest.dir_to_yaw(vector.direction(pos, dest)) -
-                                pi / 2
-                    end
+                if steer_to then
+                    tyaw = minetest.dir_to_yaw(steer_to)
                 end
-
-                if collision then
-
-                    local left_dist = vector.distance(collision, left)
-                    local right_dist = vector.distance(collision, right)
-                    if math.min(diff(left_dist, right_dist)) <= 3 then
-                        tyaw = minetest.dir_to_yaw(
-                                   vector.direction(pos, collision)) - pi / 2
-                    end
-                    if random(1, vector.distance(pos, collision)) == 1 then
-                        if left_dist > right_dist then
-                            tyaw = minetest.dir_to_yaw(
-                                       vector.direction(pos, left))
-                        elseif right_dist > left_dist then
-                            tyaw = minetest.dir_to_yaw(
-                                       vector.direction(pos, right))
-                        end
-                    end
-                    if collision.y < pos.y and vector.distance(pos, collision) <
-                        self.surface_avoidance_range then
-                        if lift < 1 then
-                            lift = lift + 0.2
-                        end
-                    end
-
-                    if collision.y > pos.y and vector.distance(pos, collision) <
-                        self.floor_avoidance_range then
-                        if lift > -1 then
-                            lift = lift - 0.2
-                        end
-                    end
-                end
-
-                mobkit.turn2yaw(self, self.turn_rate or 2)
 
                 if lift < 0 then
                     self.object:set_acceleration({x = 0, y = 0.1, z = 0})
                 else
                     self.object:set_acceleration({x = 0, y = 0, z = 0})
-				end
-
-				set_lift(self, lift)
-				mobkit.go_forward_horizontal(self, self.max_speed)
-
-                if vector.distance(pos, tpos) <= self.collisionbox[4] +
-                    self.reach then
-                    mobkit.hq_aqua_turn(self, prty, yaw - pi,
-                                        self.max_speed * 0.5)
-                    self.status = mobkit.remember(self, "status", "")
-                    return true
                 end
+
+                if not turn_intensity or turn_intensity < 1 then
+                    turn_intensity = 1
+                end
+
+                mobkit.turn2yaw(self, tyaw,
+                                (self.turn_rate or 2) * turn_intensity)
+                set_lift(self, lift)
+                mobkit.go_forward_horizontal(self, self.max_speed)
             end
         end
         if (self.status == "following" and
             not mob_core.follow_holding(self, player)) then
             self.status = mobkit.remember(self, "status", "")
-            mobkit.clear_queue_high(self)
+            return true
         end
     end
     mobkit.queue_high(self, func, prty)
@@ -1053,8 +921,7 @@ function mob_core.hq_follow_holding(self, prty, player, stop_threshold) -- Follo
             if mob_core.follow_holding(self, player) then
                 local pos = mobkit.get_stand_pos(self)
                 local tpos = player:get_pos()
-                if vector.distance(pos, tpos) <= self.collisionbox[4] +
-                    stop_threshold then
+                if vec_dist(pos, tpos) <= self.collisionbox[4] + stop_threshold then
                     mobkit.lq_idle(self, 0.1, "stand")
                 else
                     if self.animation["run"] then
@@ -1071,8 +938,8 @@ function mob_core.hq_follow_holding(self, prty, player, stop_threshold) -- Follo
         if (self.status == "following" and
             not mob_core.follow_holding(self, player)) then
             self.status = mobkit.remember(self, "status", "")
-            mobkit.clear_queue_high(self)
             mobkit.lq_idle(self, 1, "stand")
+            return true
         end
     end
     mobkit.queue_high(self, func, prty)
@@ -1263,16 +1130,16 @@ end
 -- Run From --
 
 function mobkit.hq_runfrom(self, prty, tgtobj) --  Overwrites mobkit.hq_runfrom()
-    local init = true
+    local init = false
     local timer = 6
     local func = function(self)
         if not mobkit.is_alive(tgtobj) then return true end
-        if init then
+        if not init then
             timer = timer - self.dtime
-            if timer <= 0 or
-                vector.distance(self.object:get_pos(), tgtobj:get_pos()) < 8 then
+            if timer <= 0 or vec_dist(self.object:get_pos(), tgtobj:get_pos()) <
+                8 then
                 mobkit.make_sound(self, 'scared')
-                init = false
+                init = true
             end
         end
         mobkit.animate(self, "run")
@@ -1280,7 +1147,7 @@ function mobkit.hq_runfrom(self, prty, tgtobj) --  Overwrites mobkit.hq_runfrom(
         if mobkit.is_queue_empty_low(self) and self.isonground then
             local pos = mobkit.get_stand_pos(self)
             local opos = tgtobj:get_pos()
-            if vector.distance(pos, opos) < self.view_range * 1.1 then
+            if vec_dist(pos, opos) < self.view_range * 1.1 then
                 local tpos = {
                     x = 2 * pos.x - opos.x,
                     y = opos.y,
@@ -1302,12 +1169,12 @@ end
 
 function mob_core.hq_liquid_recovery(self, prty, anim)
     local tpos
-    local init = true
+    local init = false
     anim = anim or "walk"
     local func = function(self)
-        if init then
+        if not init then
             mobkit.animate(self, anim)
-            init = false
+            init = true
         end
         if self.isonground and not self.isinliquid then
             mobkit.lq_idle(self, 0.1)
@@ -1321,7 +1188,7 @@ function mob_core.hq_liquid_recovery(self, prty, anim)
             tpos = scan
         end
         if tpos then
-            local dist = vector.distance(pos, tpos)
+            local dist = vec_dist(pos, tpos)
             mobkit.drive_to_pos(self, tpos, self.max_speed * 0.75, 1,
                                 self.collisionbox[4] * 1.25)
             if dist < self.collisionbox[4] * 1.75 then
@@ -1356,8 +1223,8 @@ function mob_core.lq_dumb_punch(self, target, init_anim)
         local tyaw = minetest.dir_to_yaw(vector.direction(pos, tpos))
         if abs(tyaw - yaw) > 0.1 then mobkit.turn2yaw(self, tyaw, 4) end
         local target_side = abs(target:get_properties().collisionbox[4])
-        if vector.distance(pos, tpos) < self.reach + target_side and
-            self.punch_timer <= 0 then
+        if vec_dist(pos, tpos) < self.reach + target_side and self.punch_timer <=
+            0 then
             mobkit.animate(self, "punch")
             target:punch(self.object, 1.0, {
                 full_punch_interval = 0.1,
@@ -1392,7 +1259,7 @@ function mob_core.hq_hunt(self, prty, target)
         mob_core.punch_timer(self)
         if mobkit.is_queue_empty_low(self) then
             self.status = mobkit.remember(self, "status", "hunting")
-            local dist = vector.distance(pos, tpos)
+            local dist = vec_dist(pos, tpos)
             local yaw = self.object:get_yaw()
             local tyaw = minetest.dir_to_yaw(vector.direction(pos, tpos))
             if abs(tyaw - yaw) > 0.1 then
@@ -1404,7 +1271,7 @@ function mob_core.hq_hunt(self, prty, target)
             end
             local target_side = abs(target:get_properties().collisionbox[4])
             mob_core.goto_next_waypoint(self, tpos)
-            if vector.distance(pos, tpos) < self.reach + target_side then
+            if vec_dist(pos, tpos) < self.reach + target_side then
                 self.status = mobkit.remember(self, "status", "")
                 mob_core.lq_dumb_punch(self, target, "stand")
             end
