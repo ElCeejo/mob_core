@@ -99,8 +99,10 @@ function mob_core.can_fit(self, pos, no_air)
             for z = pos1.z, pos2.z do
                 local npos = vector.new(x, y, z)
                 local name = minetest.get_node(npos).name
-                if not minetest.registered_nodes[name].walkable or
-                    (no_air and name == "air") then return false end
+                if minetest.registered_nodes[name].walkable or
+				(no_air and name == "air") then
+					return false
+				end
             end
         end
     end
@@ -743,7 +745,7 @@ function mob_core.hq_aqua_attack(self, prty, target)
     local init = false
     local func = function(self)
         if not self.isinliquid or not mobkit.is_alive(target) or
-            not mob_core.can_fit(self, target:get_pos(), true) then
+			not mob_core.can_fit(self, target:get_pos()) then
             return true
         end
         if not init then
@@ -767,7 +769,9 @@ function mob_core.hq_aqua_attack(self, prty, target)
 
         if surface <= self.surface_avoidance_range then
             if lift > -1 then lift = lift - 0.2 end
-        end
+		end
+		
+		tyaw = minetest.dir_to_yaw(dir)
 
         if steer_to then tyaw = minetest.dir_to_yaw(steer_to) end
 
