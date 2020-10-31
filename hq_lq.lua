@@ -745,7 +745,7 @@ function mob_core.hq_aqua_attack(self, prty, target)
     local init = false
     local func = function(self)
         if not self.isinliquid or not mobkit.is_alive(target) or
-			not mob_core.can_fit(self, target:get_pos()) then
+			not mob_core.can_fit(self, target:get_pos(), true) then
             return true
         end
         if not init then
