@@ -559,6 +559,15 @@ function mob_core.set_textures(self)
 end
 
 function mob_core.on_activate(self, staticdata, dtime_s) -- On Activate
+	local init_props = {}
+	if not self.textures then
+		if self.female_textures then
+			init_props.textures = {self.female_textures[1]}
+		elseif self.male_textures then
+			init_props.textures = {self.male_textures[1]}
+		end
+		self.object:set_properties(init_props)
+	end
 	mobkit.actfunc(self, staticdata, dtime_s)
 	self.tamed = mobkit.recall(self, "tamed") or false
 	self.owner = mobkit.recall(self, "owner") or nil
