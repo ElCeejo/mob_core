@@ -181,8 +181,8 @@ function mob_core.make_sound(self, sound)
 
 		minetest.sound_play(spec, parameters)
 
-		if not spec.gain then sped.gain = 1.0 end
-		if not spec.distance then sped.distance = 16 end
+		if not spec.gain then spec.gain = 1.0 end
+		if not spec.distance then spec.distance = 16 end
 		
 		--pick random values within a range if they're a table
 		parameters.gain = in_range(spec.gain)
