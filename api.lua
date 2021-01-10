@@ -906,7 +906,7 @@ function mob_core.register_spawn(def, interval, chance)
 					def.min_rad or 24,
 					def.max_rad or 256,
 					def.group or 1,
-                                        def.optional or nil
+					def.optional or nil
 				)
 			end
 			spawn_timer = 0
