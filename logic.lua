@@ -7,7 +7,8 @@
 
 minetest.register_on_mods_loaded(function()
     for name, def in pairs(minetest.registered_entities) do
-        if minetest.registered_entities[name].get_staticdata == mobkit.statfunc then
+        if minetest.registered_entities[name].logic
+        or minetest.registered_entities[name].brainfunc then
             local old_punch = def.on_punch
             if not old_punch then
                 old_punch = function() end
