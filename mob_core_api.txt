@@ -1,0 +1,177 @@
+Mob Core API Documentation
+
+Entity definition
+---------------------
+
+minetest.register_entity("mod:name",{
+
+	-- required minetest api props
+
+	initial_properties = {
+		physical = true,
+		collide_with_objects = true,
+		collisionbox = {...},
+		visual = "mesh",
+		mesh = "...",
+		textures = {...},
+	},
+
+	-- required mob_core props (refer to mobkits documentation for required mobkit props)
+
+	fall_damage = [bool] If true, the mob will take fall damage (true by default)
+	igniter_damage = [bool] If true, the mob will take fire/lava damage (true by default)
+	follow = [table/string] Table of items mob should follow (will also accept a single string)
+	immune_to = [table] Table of items mob can't take damage from
+	reach = [num] The distance from the center of the mobs hitbox in which it can hit another mob
+	damage = [num] The amount of damage the mob does in the fleshy group (2 damage = 1 player heart)
+	knockback = [num] How much knockback the mob deals to other mobs or players
+	defend_owner = [bool] If true, when the mobs owner punches another mob, the mob will be stored in the self.owner_target variable
+    	drops = [table] Table of items mob can drop. Example: 
+	{
+        	{name = "my_mob:meat_raw", chance = 1, min = 1, max = 3}
+    	}
+
+	-- Obstacle Avoidance
+	obstacle_avoidance_range = [num] Multiplier for how far ahead the mob checks for obstacles.
+        surface_avoidance_range = [num] How close (in nodes) from the center of the mobs hitbox it will get to the water surface
+        floor_avoidance_range = [num] How close (in nodes) from the center of the mobs hitbox it will get to the water floor
+
+	-- For mobs that use mob_core.growth()
+	scale_stage1 = [num] Multiplier for how big the mob will be at growth stage 1 (default: 0.25)
+	scale_stage2 = [num] Multiplier for how big the mob will be at growth stage 2 (default: 0.5)
+	scale_stage3 = [num] Multiplier for how big the mob will be at growth stage 3 (default: 0.75)
+
+	-- For mobs that have unique textures for males, females, and children
+    	female_textures = [table] Texture/Textures for female mobs
+    	male_textures = [table] Texture/Textures for male mobs
+    	child_textures = [table] Texture/Textures for child mobs
+})
+
+------------
+Misc Functions (not specific to mobs but useful for new functions)
+------------
+
+function mob_core.find_val(tbl, val)
+	-- tbl: table
+	-- val: any value
+	-- return true if tbl contains val
+
+
+------------
+1. Required Functions
+------------
+
+function mob_core.on_step(self, dtime, moveresult)
+	-- REQUIRED, many functions will not work if this is not used
+
+function mob_core.on_activate(self, staticdata, dtime_s)
+	-- REQUIRED, many functions will not work if this is not used
+
+------------
+2. Utility Functions
+------------
+
+These functions are used to get/set attributes quickly, as well as easily manage mobs
+
+function mob_core.set_scale(self, scale)
+	-- Sets mobs scale (visual and collisionbox)
+	-- self: luaentity
+	-- scale: multiplier for moba current scale
+
+function mob_core.set_owner(self, name)
+	-- Sets mobs owner
+	-- self: luaentity
+	-- name: name of player to set as owner
+
+function mob_core.spawn_child(pos, mob)
+	-- Spawns a child mob
+	-- pos: position
+	-- mob: name of the mob to be spawned
+
+mob_core.follow_holding(self, player)
+	-- Check if player is holding an item the mob follows
+	-- self: luaentity
+	-- player: player
+
+function mob_core.shared_owner(self, object)
+	-- self: luaentity
+	-- object: luaentity or userdata
+	-- returns true if self and object have the same owner
+
+function mob_core.is_mobkit_mob(object)
+	-- object: luaentity or userdata
+	-- returns true if object uses mobkit
+
+function mob_core.register_spawn({
+	name = [string] mob name
+	nodes = [table] list of nodes to spawn mob on
+	min_light = [number] minimum light level
+	max_light = [number] maximum ligth level
+	min_height = [number] minimum world heigh
+	max_height = [number] maximum world heigh
+	min_rad = [number] minimum radius around player
+	max_rad = [number] maximum radius around player
+	group = [number] amount of mobs to spawn
+}, interval, chance)
+	-- interval: how often (in seconds) to attempt spawning
+	-- chance: chance to attempt spawning
+
+------------
+3. Interaction Functions
+------------
+
+These functions are used for player -> mob interactions, like right-clicking and punches
+
+function mob_core.mount(self, clicker)
+	-- self: luaentity
+	-- clicker: player
+
+function mob_core.mount(self, clicker, capture_tool, capture_chance, wear, force_take)
+	-- self: luaentity
+	-- clicker: player
+	-- capture_tool: itemstring
+	-- capture_chance: 1 / x chance
+	-- wear: amount of wear to be added to tool
+	-- force_take: boolean, true means any player can catch mob
+
+function mob_core.feed_tame(self, clicker, feed_count, tame, breed)
+	-- self: luaentity
+	-- clicker: player
+	-- feed_count: amount of feeds to reach full hp
+	-- tame: bool, if true mob will be tamed when feed_count is met
+	-- breed: bool, if true self.breed_mode variable will be set to true when feed_count is met
+
+function mob_core.protect(self, clicker, force_protect)
+	-- self: luaentity
+	-- clicker: player
+	-- force_protect: bool, if true any player can protect mob
+
+
+function mob_core.nametag(self, clicker, force_name)
+	-- self: luaentity
+	-- clicker: player
+	-- force_protect: bool, if true any player can name mob
+
+------------
+4. Built-in behaviors
+------------
+
+function mob_core.item_drop(self)
+	-- self: luaentity
+	-- Mob drops items based on self.drops
+
+function mob_core.on_die(self)
+	-- self: luaentity
+	-- Basic mob death (falls over, drops items, disappears)
+
+function mob_core.fly_to_next_waypoint(self, tpos, speed_factor)
+	-- mob flies to tpos while avoiding obstacles
+	-- speed_factor: multiplier for self.max_speed
+
+function mob_core.swim_to_next_waypoint(self, tpos, speed_factor)
+	-- mob swims to tpos while avoiding obstacles
+	-- speed_factor: multiplier for self.max_speed
+
+function mob_core.goto_next_waypoint(self, tpos, speed_factor)
+	-- same was mobkit.goto_next_waypoint, but allows for walking into water
+	-- speed_factor: multiplier for self.max_speed
