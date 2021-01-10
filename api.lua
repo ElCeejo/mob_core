@@ -489,24 +489,24 @@ function mob_core.on_punch_retaliate(self, puncher, water, group)
 	if mobkit.is_alive(self) then
 		local pos = self.object:get_pos()
 		if (not water) or (water and self.semiaquatic) then
-			mob_core.hq_hunt(self,10,puncher)
+			mob_core.hq_hunt(self, 10, puncher)
 			if group then
 				local objs = minetest.get_objects_inside_radius(pos, self.view_range)
 				for n = 1, #objs do
 					local luaent = objs[n]:get_luaentity()
 					if luaent and luaent.name == self.name and luaent.owner == self.owner and mobkit.is_alive(luaent) then
-						mob_core.hq_hunt(luaent,10,puncher)
+						mob_core.hq_hunt(luaent, 10, puncher)
 					end
 				end
 			end
 		elseif water and self.isinliquid then
-			mob_core.hq_aqua_attack(self,10,puncher,1)
+			mob_core.hq_aqua_attack(self, 10, puncher, 1)
 			if group then
 				local objs = minetest.get_objects_inside_radius(pos, self.view_range)
 				for n = 1, #objs do
 					local luaent = objs[n]:get_luaentity()
 					if luaent and luaent.name == self.name and luaent.owner == self.owner and mobkit.is_alive(luaent) then
-						mob_core.hq_aqua_attack(luaent,10,puncher,1)
+						mob_core.hq_aqua_attack(luaent, 10, puncher, 1)
 					end
 				end
 			end
@@ -520,24 +520,24 @@ function mob_core.on_punch_runaway(self, puncher, water, group)
 	if mobkit.is_alive(self) then
 		local pos = self.object:get_pos()
 		if (not water) or (water and not self.isinliquid) then
-			mobkit.hq_runfrom(self,10,puncher)
+			mobkit.hq_runfrom(self, 10, puncher)
 			if group then
 				local objs = minetest.get_objects_inside_radius(pos, self.view_range)
 				for n = 1, #objs do
 					local luaent = objs[n]:get_luaentity()
 					if luaent and luaent.name == self.name and luaent.owner == self.owner and mobkit.is_alive(luaent) then
-						mobkit.hq_runfrom(self,10,puncher)
+						mobkit.hq_runfrom(self, 10, puncher)
 					end
 				end
 			end
 		elseif water and self.isinliquid then
-			mob_core.hq_swimfrom(self,10,puncher,1)
+			mob_core.hq_swimfrom(self, 10, puncher, 1)
 			if group then
 				local objs = minetest.get_objects_inside_radius(pos, self.view_range)
 				for n = 1, #objs do
 					local luaent = objs[n]:get_luaentity()
 					if luaent and luaent.name == self.name and luaent.owner == self.owner and mobkit.is_alive(luaent) then
-						mob_core.hq_swimfrom(luaent,10,puncher,1)
+						mob_core.hq_swimfrom(luaent, 10, puncher, 1)
 					end
 				end
 			end
