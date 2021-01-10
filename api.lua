@@ -14,6 +14,18 @@ local min = math.min
 
 local creative = minetest.settings:get_bool("creative_mode")
 
+mob_core.walkable_nodes = {}
+
+minetest.register_on_mods_loaded(function()
+    for name in pairs(minetest.registered_nodes) do
+        if name ~= "air" and name ~= "ignore" then
+            if minetest.registered_nodes[name].walkable then
+                table.insert(mob_core.walkable_nodes, name)
+            end
+        end
+    end
+end)
+
 ----------------------
 -- Helper Functions --
 ----------------------
@@ -43,15 +55,7 @@ function mob_core.is_mobkit_mob(object)
 		object = object:get_luaentity()
 	end
 	if type(object) == 'table' then
-		if object.name:match("^petz:") then
-			return true
-		end
-		if (object.logic or object.brainfunc)
-		and object.physics
-		and object.memory
-		and object.height
-		and (object.object:get_armor_groups()
-		and object.object:get_armor_groups().fleshy) then
+		if (object.logic or object.brainfunc) then
 			return true
 		else
 			return false
@@ -77,6 +81,15 @@ function mob_core.shared_owner(self, object)
 	return false
 end
 
+function mob_core.find_val(tbl, val)
+    for _, v in ipairs(tbl) do
+        if v == val then
+            return true
+        end
+    end
+    return false
+end
+
 -- Follow Holding? --
 
 function mob_core.follow_holding(self, player)
@@ -99,11 +112,23 @@ end
 -- Mob Item Handling --
 -----------------------
 
-function mob_core.register_spawn_egg(mob, col1, col2)
+function mob_core.register_spawn_egg(mob, col1, col2, inventory_image)
+	if col1 and col2 then
+		local len1 = string.len(col1)
+		local len2 = string.len(col2)
+		if len1 == 6 then
+			col1 = col1 .. "d9"
+		end
+		if len2 == 6 then
+			col2 = col2 .. "d9"
+		end
+		local base = "mob_core_spawn_egg_base.png^(mob_core_spawn_egg_base.png^[colorize:#"..col1..")"
+		local spots = "mob_core_spawn_egg_overlay.png^(mob_core_spawn_egg_overlay.png^[colorize:#"..col2..")"
+		inventory_image = base .. "^" .. spots
+	end
 	minetest.register_craftitem(mob:split(":")[1]..":spawn_"..mob:split(":")[2], {
 		description = "Spawn "..mob_core.get_name_proper(mob),
-		inventory_image = "(mob_core_spawn_egg_base.png^[colorize:#"..col1..")^"..
-		"(mob_core_spawn_egg_overlay.png^[colorize:#"..col2..")",
+		inventory_image = inventory_image,
 		stack_max = 99,
 		on_place = function(itemstack, _, pointed_thing)
 			local mobdef = minetest.registered_entities[mob]
@@ -154,7 +179,9 @@ function mob_core.register_set(mob, background, mask)
 	})
 end
 
-
+-----------------------
+-- Utility Functions --
+-----------------------
 
 ------------
 -- Sounds --
@@ -165,6 +192,7 @@ function mob_core.make_sound(self, sound)
 	local parameters = {object = self.object}
 	
 	if type(spec) == 'table' then
+		if #spec > 0 then spec = spec[random(#spec)] end
 
 		local function in_range(value)
 			return type(value) == 'table' and value[1]+random()*(value[2]-value[1]) or value
@@ -175,14 +203,14 @@ function mob_core.make_sound(self, sound)
 		pitch = pitch + random(-10, 10) * 0.005
 
 		if self.child
-		and self.alter_child_pitch then
+		and self.sounds.alter_child_pitch then
 			parameters.pitch = 2.0
 		end
 
 		minetest.sound_play(spec, parameters)
 
-		if not spec.gain then spec.gain = 1.0 end
-		if not spec.distance then spec.distance = 16 end
+		if not spec.gain then sped.gain = 1.0 end
+		if not spec.distance then sped.distance = 16 end
 		
 		--pick random values within a range if they're a table
 		parameters.gain = in_range(spec.gain)
@@ -217,6 +245,10 @@ function mob_core.item_drop(self) -- Drop Items
 			item = self.drops[n].name
 			if self.drops[n].min ~= 0 then
 				obj = minetest.add_item(pos, ItemStack(item .. " " .. num))
+				if obj then
+					local v = math.random(-1, 1)
+					obj:add_velocity({x = v, y = 1, z = v})
+				end
 			elseif obj then
 				obj:remove()
 			end
@@ -244,6 +276,26 @@ end
 
 -- Death --
 
+local pi = math.pi
+
+function mob_core.lq_fallover(self)
+	local zrot = 0
+	local init = true
+	local func=function(self)
+		if init then
+			local vel = self.object:get_velocity()
+			self.object:set_velocity(mobkit.pos_shift(vel,{y=1}))
+			mobkit.animate(self,'stand')
+			init = false
+		end
+		zrot=zrot+pi*0.05
+		local rot = self.object:get_rotation()
+		if rot then self.object:set_rotation({x=rot.x,y=rot.y,z=zrot}) end
+		if zrot >= pi*0.5 then return true end
+	end
+	mobkit.queue_low(self,func)
+end
+
 function mob_core.on_die(self)
 	mobkit.clear_queue_high(self)
 	mobkit.clear_queue_low(self)
@@ -264,10 +316,11 @@ function mob_core.on_die(self)
 	local func = function()
 		if not mobkit.exists(self) then return true end
 		if start then
-			if self.animation["death"] then
+			if self.animation
+			and self.animation["death"] then
 				mobkit.animate(self,"death")
 			else
-				mobkit.lq_fallover(self)
+				mob_core.lq_fallover(self)
 			end
 			self.logic = function() end	-- brain dead as well
 			start = false
@@ -279,26 +332,29 @@ function mob_core.on_die(self)
 			end
 			mob_core.item_drop(self)
 			minetest.add_particlespawner({
-				amount = self.collisionbox[4]*4,
-				time = 0.25,
+				amount = 12,
+				time = 0.1,
 				minpos = {
-					x = pos.x - self.collisionbox[4]*0.5,
+					x = pos.x - self.collisionbox[4]*0.75,
 					y = pos.y,
-					z = pos.z - self.collisionbox[4]*0.5,
+					z = pos.z - self.collisionbox[4]*0.75,
 				},
 				maxpos = {
-					x = pos.x + self.collisionbox[4]*0.5,
-					y = pos.y + self.collisionbox[4]*0.5,
-					z = pos.z + self.collisionbox[4]*0.5,
+					x = pos.x + self.collisionbox[4]*0.75,
+					y = pos.y + self.collisionbox[4]*0.75,
+					z = pos.z + self.collisionbox[4]*0.75,
 				},
-				minacc = {x = -0.25, y = 0.5, z = -0.25},
-				maxacc = {x = 0.25, y = 0.25, z = 0.25},
-				minexptime = 0.75,
-				maxexptime = 1,
-				minsize = 4,
-				maxsize = 4,
-				texture = "mob_core_red_particle.png",
-				glow = 16,
+				minvel = {x=-0.2, y=-0.1, z=-0.2},
+				maxvel = {x=0.2, y=-0.1, z=0.2},
+				minacc = {x=0, y=0.25, z=0},
+				maxacc = {x=0, y=0.45, z=0},
+				minexptime = 1.5,
+				maxexptime = 2,
+				minsize = 2,
+				maxsize = 3,
+				collisiondetection = true,
+				vertical = false,
+				texture = "mob_core_red_particle.png"
 			})
 			self.object:remove()
 		end
@@ -333,27 +389,40 @@ function mob_core.on_die(self)
 			self.object:remove()
 		end)
 	end
-	mobkit.queue_high(self,func,100)
+	mobkit.queue_high(self, func, 100)
 end
 
 -- Vitals --
 
 function mob_core.vitals(self)
+	if not mobkit.is_alive(self) then return end
 	-- Fall Damage
-	if not self.fall_damage then
+	if self.fall_damage == nil then
 		self.fall_damage = true
 	end
 	if self.fall_damage then
-		local vel = self.object:get_velocity()
-		local velocity_delta = abs(self.lastvelocity.y - vel.y)
-		if velocity_delta > mobkit.safe_velocity then
-			flash_red(self)
-			self.hp = self.hp - floor(self.max_hp * min(1, velocity_delta/mobkit.terminal_velocity))
+		if not self.isonground
+		and not self.isinliquid
+		and not self.fall_start then
+			self.fall_start = mobkit.get_stand_pos(self).y
+		end
+		if self.fall_start then
+			local fall_distance = self.fall_start - mobkit.get_stand_pos(self).y
+			if not self.max_fall then
+				self.max_fall = 3
+			end
+			if self.isonground
+			and fall_distance > self.max_fall then
+				flash_red(self)
+				mob_core.make_sound(self, "hurt")
+				mobkit.hurt(self, fall_distance)
+				self.fall_start = nil
+			end
 		end
 	end
 
 	-- Lava/Fire Damage
-	if not self.igniter_damage then
+	if self.igniter_damage == nil then
 		self.igniter_damage = true
 	end
 
@@ -420,24 +489,24 @@ function mob_core.on_punch_retaliate(self, puncher, water, group)
 	if mobkit.is_alive(self) then
 		local pos = self.object:get_pos()
 		if (not water) or (water and self.semiaquatic) then
-			mob_core.hq_hunt(self,10,puncher)
+			mob_core.hq_hunt(self, 10, puncher)
 			if group then
 				local objs = minetest.get_objects_inside_radius(pos, self.view_range)
 				for n = 1, #objs do
 					local luaent = objs[n]:get_luaentity()
 					if luaent and luaent.name == self.name and luaent.owner == self.owner and mobkit.is_alive(luaent) then
-						mob_core.hq_hunt(luaent,10,puncher)
+						mob_core.hq_hunt(luaent, 10, puncher)
 					end
 				end
 			end
 		elseif water and self.isinliquid then
-			mob_core.hq_aqua_attack(self,10,puncher,1)
+			mob_core.hq_aqua_attack(self, 10, puncher, 1)
 			if group then
 				local objs = minetest.get_objects_inside_radius(pos, self.view_range)
 				for n = 1, #objs do
 					local luaent = objs[n]:get_luaentity()
 					if luaent and luaent.name == self.name and luaent.owner == self.owner and mobkit.is_alive(luaent) then
-						mob_core.hq_aqua_attack(luaent,10,puncher,1)
+						mob_core.hq_aqua_attack(luaent, 10, puncher, 1)
 					end
 				end
 			end
@@ -451,24 +520,24 @@ function mob_core.on_punch_runaway(self, puncher, water, group)
 	if mobkit.is_alive(self) then
 		local pos = self.object:get_pos()
 		if (not water) or (water and not self.isinliquid) then
-			mobkit.hq_runfrom(self,10,puncher)
+			mobkit.hq_runfrom(self, 10, puncher)
 			if group then
 				local objs = minetest.get_objects_inside_radius(pos, self.view_range)
 				for n = 1, #objs do
 					local luaent = objs[n]:get_luaentity()
 					if luaent and luaent.name == self.name and luaent.owner == self.owner and mobkit.is_alive(luaent) then
-						mobkit.hq_runfrom(self,10,puncher)
+						mobkit.hq_runfrom(self, 10, puncher)
 					end
 				end
 			end
 		elseif water and self.isinliquid then
-			mob_core.hq_swimfrom(self,10,puncher,1)
+			mob_core.hq_swimfrom(self, 10, puncher, 1)
 			if group then
 				local objs = minetest.get_objects_inside_radius(pos, self.view_range)
 				for n = 1, #objs do
 					local luaent = objs[n]:get_luaentity()
 					if luaent and luaent.name == self.name and luaent.owner == self.owner and mobkit.is_alive(luaent) then
-						mob_core.hq_swimfrom(luaent,10,puncher,1)
+						mob_core.hq_swimfrom(luaent, 10, puncher, 1)
 					end
 				end
 			end
@@ -508,49 +577,62 @@ function mob_core.activate_nametag(self)
 end
 
 function mob_core.set_textures(self)
-	-- Male Textures
-	if self.gender == "male" and self.male_textures then
-		if #self.male_textures > 1 then
-			self.texture_no = random(#self.male_textures)
-		else
-			self.texture_no = 1
+	if not self.texture_no then
+		if self.gender == "male" and self.male_textures then
+			if #self.male_textures > 1 then
+				self.texture_no = random(#self.male_textures)
+			else
+				self.texture_no = 1
+			end
 		end
-	end
-	-- Female Textures
-	if self.gender == "female" and self.female_textures then
-		if #self.female_textures > 1 then
-			self.texture_no = random(#self.female_textures)
-		else
-			self.texture_no = 1
+		if self.gender == "female" and self.female_textures then
+			if #self.female_textures > 1 then
+				self.texture_no = random(#self.female_textures)
+			else
+				self.texture_no = 1
+			end
 		end
 	end
 	if self.textures and self.texture_no then
+		local texture_no = self.texture_no
 		local props = {}
 		if self.gender == "female" then
 			if self.female_textures then
-				props.textures = {self.female_textures[self.texture_no]}
+				props.textures = {self.female_textures[texture_no]}
 			else
-				props.textures = {self.textures[self.texture_no]}
+				props.textures = {self.textures[texture_no]}
 			end
 		elseif self.gender == "male" then
 			if self.male_textures then
-				props.textures = {self.male_textures[self.texture_no]}
+				props.textures = {self.male_textures[texture_no]}
 			else
-				props.textures = {self.textures[self.texture_no]}
+				props.textures = {self.textures[texture_no]}
 			end
 		end
 		if self.child and self.child_textures then
 			if self.gender == "female" then
 				if self.child_female_textures then
-					props.textures = {self.child_female_textures[self.texture_no]}
+					if texture_no > #self.child_female_textures then
+						texture_no = 1
+					end
+					props.textures = {self.child_female_textures[texture_no]}
 				else
-					props.textures = {self.child_textures[self.texture_no]}
+					if texture_no > #self.child_textures then
+						texture_no = 1
+					end
+					props.textures = {self.child_textures[texture_no]}
 				end
 			elseif self.gender == "male" then
 				if self.child_male_textures then
-					props.textures = {self.child_male_textures[self.texture_no]}
+					if texture_no > #self.child_male_textures then
+						texture_no = 1
+					end
+					props.textures = {self.child_male_textures[texture_no]}
 				else
-					props.textures = {self.child_textures[self.texture_no]}
+					if texture_no > #self.child_textures then
+						texture_no = 1
+					end
+					props.textures = {self.child_textures[texture_no]}
 				end
 			end
 		end
@@ -561,7 +643,6 @@ end
 function mob_core.on_activate(self, staticdata, dtime_s) -- On Activate
 	local init_props = {}
 	if not self.textures then
-		self.textures = {}
 		if self.female_textures then
 			init_props.textures = {self.female_textures[1]}
 		elseif self.male_textures then
@@ -569,6 +650,7 @@ function mob_core.on_activate(self, staticdata, dtime_s) -- On Activate
 		end
 		self.object:set_properties(init_props)
 	end
+	if not self.textures then self.textures = {} end
 	mobkit.actfunc(self, staticdata, dtime_s)
 	self.tamed = mobkit.recall(self, "tamed") or false
 	self.owner = mobkit.recall(self, "owner") or nil
@@ -584,6 +666,9 @@ function mob_core.on_activate(self, staticdata, dtime_s) -- On Activate
 	set_gender(self)
 	mob_core.activate_nametag(self)
 	mob_core.set_textures(self)
+	if self.protected then
+		self.timeout = nil
+	end
 	if self.growth_stage == 1
 	and self.scale_stage1 then
 		mob_core.set_scale(self, self.scale_stage1)
@@ -598,9 +683,9 @@ function mob_core.on_activate(self, staticdata, dtime_s) -- On Activate
 	end
 end
 
-------------------------------
--- Mob Management Functions --
-------------------------------
+-----------------------
+-- Utility Functions --
+-----------------------
 
 -- Set Scale --
 
@@ -625,6 +710,13 @@ function mob_core.set_scale(self, scale)
 	})
 end
 
+-- Set Owner --
+
+function mob_core.set_owner(self, name)
+	self.tamed = mobkit.remember(self, "tamed", true)
+	self.owner = mobkit.remember(self, "owner", name)
+end
+
 -- Spawn Child Mob --
 
 function mob_core.spawn_child(pos, mob)
@@ -636,13 +728,6 @@ function mob_core.spawn_child(pos, mob)
 	mob_core.set_scale(luaent, luaent.scale_stage1 or 0.25)
 	mob_core.set_textures(luaent)
 	return
-end
-
--- Set Owner --
-
-function mob_core.set_owner(self, name)
-	self.tamed = mobkit.remember(self, "tamed", true)
-	self.owner = mobkit.remember(self, "owner", name)
 end
 
 -- Force Tame Command --
@@ -712,12 +797,17 @@ minetest.register_chatcommand("force_tame", {
 
 -- Spawning --
 
+function mob_core.get_biome_name(pos)
+	if not pos then return end
+	return minetest.get_biome_name(minetest.get_biome_data(pos).biome)
+end
+
 local find_node_height = 32
 
 local block_protected_spawn = minetest.settings:get_bool("block_protected_spawn") or true
 local mob_limit = minetest.settings:get_bool("mob_limit") or 6
 
-function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_height, min_rad, max_rad, group)
+function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_height, min_rad, max_rad, group, optional)
 	if minetest.registered_entities[name] then
 		for _,player in ipairs(minetest.get_connected_players()) do
 			local mobs_amount = 0
@@ -744,22 +834,30 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_heigh
 
 			--cast towards the direction
 			if axis == 0 then --x
-				x = pos.x + math.random(min_rad,max_rad)*int[math.random(1,2)]
-				z = pos.z + math.random(-max_rad,max_rad)
+				x = pos.x + math.random(min_rad, max_rad) * int[random(1,2)]
+				z = pos.z + math.random(-max_rad, max_rad)
 			else --z
-				z = pos.z + math.random(min_rad,max_rad)*int[math.random(1,2)]
-				x = pos.x + math.random(-max_rad,max_rad)
+				z = pos.z + math.random(min_rad, max_rad) * int[random(1,2)]
+				x = pos.x + math.random(-max_rad, max_rad)
 			end
 
 			local spawner = minetest.find_nodes_in_area_under_air(
-				vector.new(x,pos.y-find_node_height,z),
-				vector.new(x,pos.y+find_node_height,z), nodes)
+				vector.new(x - 1, pos.y - find_node_height, z - 1),
+				vector.new(x + 1, pos.y + find_node_height, z + 1), nodes)
 
 			if table.getn(spawner) > 0 then
 				local mob_pos = spawner[1]
 
 				if block_protected_spawn and minetest.is_protected(mob_pos, "") then
 					return
+				end
+
+				if optional then
+					if optional.biomes then
+						if not mob_core.find_val(optional.biomes, mob_core.get_biome_name(pos)) then
+							return
+						end
+					end
 				end
 
 				if mob_pos.y > max_height
@@ -782,7 +880,8 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_heigh
 						{x=mob_pos.x+group+col4,y=mob_pos.y+group,z=mob_pos.z+group+col4},
 						nodes
 					)
-					if #group_pos < group then group = group-1 end
+					if #group_pos < group then group = group - 1 end
+					if group <= 0 then return end
 					group_pos[i].y = group_pos[i].y + math.abs(mobdef.collisionbox[2])
 					minetest.add_entity(group_pos[i], name)
 				end
@@ -826,7 +925,7 @@ function mob_core.collision_detection(self)
 	local pos = self.object:get_pos()
 	local hitbox = self.object:get_properties().collisionbox
 	local width = -hitbox[1] + hitbox[4] + 0.5
-	for _,object in ipairs(minetest.get_objects_inside_radius(pos, width)) do
+	for _, object in ipairs(minetest.get_objects_inside_radius(pos, width)) do
 		if (object and object ~= self.object)
 		and (object:is_player() or (object:get_luaentity() and object:get_luaentity().logic))
 		and (not object:get_attach() or (object:get_attach() and object:get_attach() ~= self.object))
@@ -983,6 +1082,7 @@ function mob_core.on_step(self, dtime, moveresult)
 	and not mobkit.exists(self.custom_punch_target) then
 		self.custom_punch_target = nil
 	end
+
 	if self.core_growth then
 		mob_core.growth(self)
 	end
@@ -1168,6 +1268,7 @@ function mob_core.protect(self, clicker, force_protect)
 	end
 	self.protected = true
 	mobkit.remember(self, "protected", self.protected)
+	self.timeout = nil
 	local pos = self.object:get_pos()
 	pos.y = pos.y + self.collisionbox[2] + 1/1
 	minetest.add_particlespawner({
@@ -1197,18 +1298,21 @@ end
 
 -- Set Nametag --
 
-local mob_obj = {}
-local mob_sta = {}
+local nametag_obj = {}
+local nametag_item = {}
 
-function mob_core.nametag(self, clicker)
+function mob_core.nametag(self, clicker, force_name)
+	if not force_name
+	and clicker:get_player_name() ~= self.owner then
+		return
+	end
 	local item = clicker:get_wielded_item()
-	if item:get_name() == "mob_core:nametag"
-	and clicker:get_player_name() == self.owner then
+	if item:get_name() == "mob_core:nametag" then
 
 		local name = clicker:get_player_name()
 
-		mob_obj[name] = self
-		mob_sta[name] = item
+		nametag_obj[name] = self
+		nametag_item[name] = item
 
 		local tag = self.nametag or ""
 
@@ -1227,8 +1331,8 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 
 		local name = player:get_player_name()
 
-		if not mob_obj[name]
-		or not mob_obj[name].object then
+		if not nametag_obj[name]
+		or not nametag_obj[name].object then
 			return
 		end
 
@@ -1242,17 +1346,172 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 			fields.name = string.sub(fields.name, 1, 64)
 		end
 
-		mob_obj[name].nametag = mobkit.remember(mob_obj[name], "nametag", fields.name)
+		nametag_obj[name].nametag = mobkit.remember(nametag_obj[name], "nametag", fields.name)
 
-		mob_core.activate_nametag(mob_obj[name])
+		mob_core.activate_nametag(nametag_obj[name])
 
 		if fields.name ~= ""
 		and not creative then
-			mob_sta[name]:take_item()
-			player:set_wielded_item(mob_sta[name])
+			nametag_item[name]:take_item()
+			player:set_wielded_item(nametag_item[name])
 		end
 
-		mob_obj[name] = nil
-		mob_sta[name] = nil
+		nametag_obj[name] = nil
+		nametag_item[name] = nil
 	end
 end)
+
+-----------------
+-- Pathfinding --
+-----------------
+
+local function can_fit(pos, width, height)
+	height = height or 0
+    local pos1 = vector.new(pos.x - width, pos.y, pos.z - width)
+    local pos2 = vector.new(pos.x + width, pos.y + height, pos.z + width)
+    for x = pos1.x, pos2.x do
+        for y = pos1.y, pos2.y do
+            for z = pos1.z, pos2.z do
+                local p2 = vector.new(x, y, z)
+                local node = minetest.get_node(p2)
+                if minetest.registered_nodes[node.name].walkable then
+                    local p3 = vector.new(p2.x, p2.y + 1, p2.z)
+                    local node2 = minetest.get_node(p3)
+					if minetest.registered_nodes[node2.name].walkable then
+                        return false
+                    end
+                end
+            end
+        end
+    end
+    return true
+end
+
+local function move_from_wall(pos, width)
+    local pos1 = vector.new(pos.x - width, pos.y, pos.z - width)
+    local pos2 = vector.new(pos.x + width, pos.y, pos.z + width)
+    for x = pos1.x, pos2.x do
+        for y = pos1.y, pos2.y do
+            for z = pos1.z, pos2.z do
+                local p2 = vector.new(x, y, z)
+                if can_fit(p2, width) then
+                    return p2
+                end
+            end
+        end
+    end
+    return pos
+end
+
+function mob_core.find_path(pos, tpos, width)
+
+	local raw
+
+    if not minetest.registered_nodes[minetest.get_node(
+        vector.new(pos.x, pos.y - 1, pos.z))
+        .name].walkable then
+        local min = vector.subtract(pos, width+1)
+        local max = vector.add(pos, width+1)
+
+        local index_table = minetest.find_nodes_in_area_under_air( min, max, mob_core.walkable_nodes)
+        for _, i_pos in pairs(index_table) do
+            if minetest.registered_nodes[minetest.get_node(i_pos)
+                .name].walkable then
+					pos = vector.new(i_pos.x, i_pos.y + 1, i_pos.z)
+                break
+            end
+        end
+	end
+
+    if not minetest.registered_nodes[minetest.get_node(
+        vector.new(tpos.x, tpos.y - 1, tpos.z))
+        .name].walkable then
+        local min = vector.subtract(tpos, width)
+        local max = vector.add(tpos, width)
+
+        local index_table = minetest.find_nodes_in_area_under_air( min, max, mob_core.walkable_nodes)
+        for _, i_pos in pairs(index_table) do
+            if minetest.registered_nodes[minetest.get_node(i_pos)
+                .name].walkable then
+					tpos = vector.new(i_pos.x, i_pos.y + 1, i_pos.z)
+                break
+            end
+        end
+	end
+
+    local path = minetest.find_path(pos, tpos, 32, 2, 2, "A*_noprefetch")
+
+	if not path then return end
+
+	table.remove(path, 1)
+	
+    for i = #path, 1, -1 do
+		if not path then return end
+		if vector.distance(pos, path[i]) <= width + 1 then
+            for i = 3, #path do
+                path[i - 1] = path[i]
+			end
+		end
+
+        if not can_fit(path[i], width + 1) then
+            local clear = move_from_wall(path[i], width + 1)
+            if clear and can_fit(clear, width) then
+                path[i] = clear
+            end
+		end
+
+		if minetest.get_node(path[i]).name == "default:snow" then
+			path[i] = vector.new(path[i].x, path[i].y + 1, path[i].z)
+		end
+
+
+		raw = path
+		if #path > 3 then
+			
+			if vector.distance(pos, path[i]) < width then
+				table.remove(path, i)
+			end
+
+            local pos1 = path[i - 2]
+			local pos2 = path[i]
+			-- Handle Diagonals
+            if pos1
+            and pos2
+            and pos1.x ~= pos2.x
+            and pos1.z ~= pos2.z then
+				if minetest.line_of_sight(pos1, pos2) then
+					local pos3 = vector.divide(vector.add(pos1, pos2), 2)
+					if can_fit(pos, width) then
+						table.remove(path, i - 1)
+					end
+                end
+			end
+			-- Reduce Straight Lines
+			if pos1
+            and pos2
+            and pos1.x == pos2.x
+			and pos1.z ~= pos2.z
+			and pos1.y == pos2.y then
+                if minetest.line_of_sight(pos1, pos2) then
+					local pos3 = vector.divide(vector.add(pos1, pos2), 2)
+					if can_fit(pos, width) then
+						table.remove(path, i - 1)
+					end
+                end
+            elseif pos1
+			and pos2
+			and pos1.x ~= pos2.x
+			and pos1.z == pos2.z
+			and pos1.y == pos2.y then
+				if minetest.line_of_sight(pos1, pos2) then
+					local pos3 = vector.divide(vector.add(pos1, pos2), 2)
+					if can_fit(pos, width) then
+						table.remove(path, i - 1)
+					end
+				end
+			end
+		end
+    end
+
+    return path, raw
+end
