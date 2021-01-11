@@ -825,7 +825,12 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_heigh
 				return
 			end
 
-			local reliability = optional.reliability or 3
+			local reliability = 3
+
+			if optional
+			and optional.reliability then
+				reliability = optional.reliability
+			end
 
 			for _ = 1, reliability do -- 3 attempts
 				local int = {-1,1}
