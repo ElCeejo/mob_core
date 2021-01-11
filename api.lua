@@ -825,7 +825,9 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_heigh
 				return
 			end
 
-			for _ = 1, 3 do -- 3 attempts
+			local reliability = optional.reliability or 3
+
+			for _ = 1, reliability do -- 3 attempts
 				local int = {-1,1}
 				local pos = vector.floor(vector.add(player:get_pos(),0.5))
 	
