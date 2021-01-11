@@ -209,8 +209,8 @@ function mob_core.make_sound(self, sound)
 
 		minetest.sound_play(spec, parameters)
 
-		if not spec.gain then sped.gain = 1.0 end
-		if not spec.distance then sped.distance = 16 end
+		if not spec.gain then spec.gain = 1.0 end
+		if not spec.distance then spec.distance = 16 end
 		
 		--pick random values within a range if they're a table
 		parameters.gain = in_range(spec.gain)
@@ -872,18 +872,35 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_heigh
 					return
 				end
 
-				for i = 1, group do
-					local mobdef = minetest.registered_entities[name]
-					local col4 = mobdef.collisionbox[4]
-					local group_pos = minetest.find_nodes_in_area_under_air(
-						{x=mob_pos.x-group-col4,y=mob_pos.y-group,z=mob_pos.z-group-col4},
-						{x=mob_pos.x+group+col4,y=mob_pos.y+group,z=mob_pos.z+group+col4},
-						nodes
-					)
-					if #group_pos < group then group = group - 1 end
-					if group <= 0 then return end
-					group_pos[i].y = group_pos[i].y + math.abs(mobdef.collisionbox[2])
-					minetest.add_entity(group_pos[i], name)
+				if group then
+
+					local spawned = 0
+
+					local attempts = 0
+
+					while spawned < group
+					and attempts < group * 2 do
+						local mobdef = minetest.registered_entities[name]
+						local side = mobdef.collisionbox[4]
+						local group_pos = vector.new(
+							mob_pos.x + (random(-group, group) * side),
+							mob_pos.y,
+							mob_pos.z + (random(-group, group) * side)
+						)
+						local spawn_pos = minetest.find_nodes_in_area_under_air(
+							vector.new(group_pos.x, group_pos.y - 8, group_pos.z),
+							vector.new(group_pos.x, group_pos.y + 8, group_pos.z),
+							nodes)
+						if spawn_pos[1] then
+							minetest.add_entity(vector.new(
+								spawn_pos[1].x,
+								spawn_pos[1].y + math.abs(mobdef.collisionbox[2]),
+								spawn_pos[1].z
+							), name)
+							spawned = spawned + 1
+						end
+						attempts = attempts + 1
+					end
 				end
 			end
 		end
@@ -905,7 +922,8 @@ function mob_core.register_spawn(def, interval, chance)
 					def.max_height or 31000,
 					def.min_rad or 24,
 					def.max_rad or 256,
-					def.group or 1
+					def.group or 1,
+					def.optional or nil
 				)
 			end
 			spawn_timer = 0
