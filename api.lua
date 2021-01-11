@@ -876,7 +876,10 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_heigh
 
 					local spawned = 0
 
-					while spawned < group do
+					local attempts = 0
+
+					while spawned < group
+					and attempts < group * 2 do
 						local mobdef = minetest.registered_entities[name]
 						local side = mobdef.collisionbox[4]
 						local group_pos = vector.new(
@@ -886,7 +889,7 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_heigh
 						)
 						local spawn_pos = minetest.find_nodes_in_area_under_air(
 							vector.new(group_pos.x, group_pos.y - 8, group_pos.z),
-							vector.new(group_pos.x, group_pos.y - 8, group_pos.z),
+							vector.new(group_pos.x, group_pos.y + 8, group_pos.z),
 							nodes)
 						if spawn_pos[1] then
 							minetest.add_entity(vector.new(
@@ -896,6 +899,7 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_heigh
 							), name)
 							spawned = spawned + 1
 						end
+						attempts = attempts + 1
 					end
 				end
 			end
