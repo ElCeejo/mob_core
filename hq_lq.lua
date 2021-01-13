@@ -1135,7 +1135,7 @@ end
 
 -- Run From --
 
-function mobkit.hq_runfrom(self, prty, tgtobj) --  Overwrites mobkit.hq_runfrom()
+function mob_core.hq_runfrom(self, prty, tgtobj)
     local init = false
     local timer = 6
     local func = function(self)
