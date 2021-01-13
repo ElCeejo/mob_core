@@ -1586,7 +1586,7 @@ function mob_core.find_path(self, tpos)
 
     if not mobkit.is_alive(self) then return end
 
-    local pos = mobkiy.get_stand_pos(self)
+    local pos = mobkit.get_stand_pos(self)
 
     local pos_above = function(v) return vector.new(v.x, v.y + 1, v.z) end
 
