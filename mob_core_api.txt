@@ -115,6 +115,14 @@ function mob_core.register_spawn({
 }, interval, chance)
 	-- interval: how often (in seconds) to attempt spawning
 	-- chance: chance to attempt spawning
+	-- mob_core.registered_spawns[name].last_pos can be used to find the last position the mob/mobs were spawned
+
+function mob_core.register_on_spawn(name, func, ...)
+	-- name: name of a mob
+	-- func: function
+	-- ...: params of func
+	-- func is called when 'name' is spawned
+	-- Ex: mob_core.register_on_spawn("my_mobs:alligator", minetest.chat_send_all, "an alligator has spawned")
 
 ------------
 3. Interaction Functions
@@ -175,3 +183,21 @@ function mob_core.swim_to_next_waypoint(self, tpos, speed_factor)
 function mob_core.goto_next_waypoint(self, tpos, speed_factor)
 	-- same was mobkit.goto_next_waypoint, but allows for walking into water
 	-- speed_factor: multiplier for self.max_speed
+
+
+------------
+5. Pathfinding
+------------
+
+function mob_core.find_path_lite(pos, tpos, width)
+	-- pos: position
+	-- tpos: position
+	-- wdith: number
+	-- Finds a path from pos to tpos, and adjusts away from walls to account for width
+	-- Note: This doesn't always return a path with appropriate width, but is faster than mob_core.find_path()
+
+function mob_core.find_path(self, tpos)
+	-- self: luaentity
+	-- tpos: position
+	-- Finds a path to tpos, accounting for mob width
+	-- Note: This may not find a path 100% of the time
