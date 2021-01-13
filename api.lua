@@ -1423,7 +1423,11 @@ end)
 -- Pathfinding --
 -----------------
 
-local function can_fit(pos, width, height)
+-----------------
+-- Pathfinding --
+-----------------
+
+local function can_fit(pos, width, single_plane)
 	height = height or 0
     local pos1 = vector.new(pos.x - width, pos.y, pos.z - width)
     local pos2 = vector.new(pos.x + width, pos.y + height, pos.z + width)
@@ -1436,6 +1440,9 @@ local function can_fit(pos, width, height)
                     local p3 = vector.new(p2.x, p2.y + 1, p2.z)
                     local node2 = minetest.get_node(p3)
 					if minetest.registered_nodes[node2.name].walkable then
+                        return false
+                    end
+                    if single_plane then
                         return false
                     end
                 end
@@ -1452,7 +1459,8 @@ local function move_from_wall(pos, width)
         for y = pos1.y, pos2.y do
             for z = pos1.z, pos2.z do
                 local p2 = vector.new(x, y, z)
-                if can_fit(p2, width) then
+                if can_fit(p2, width)
+                and vector.distance(pos, p2) < width then
                     return p2
                 end
             end
@@ -1461,7 +1469,7 @@ local function move_from_wall(pos, width)
     return pos
 end
 
-function mob_core.find_path(pos, tpos, width)
+function mob_core.find_path_lite(pos, tpos, width)
 
 	local raw
 
@@ -1572,4 +1580,75 @@ function mob_core.find_path(pos, tpos, width)
     end
 
     return path, raw
+end
+
+function mob_core.find_path(self, tpos)
+
+    if not mobkit.is_alive(self) then return end
+
+    local pos = mobkiy.get_stand_pos(self)
+
+    local pos_above = function(v) return vector.new(v.x, v.y + 1, v.z) end
+
+    local pos_under = function(v) return vector.new(v.x, v.y - 1, v.z) end
+
+    local width = self.object:get_properties().collisionbox[4] + 1
+
+    if not minetest.registered_nodes[minetest.get_node(pos_under(pos)).name].walkable then
+
+        local min = vector.subtract(pos, width + 1)
+        local max = vector.add(pos, width + 1)
+
+        local index_table = minetest.find_nodes_in_area_under_air(min, max, mob_core.walkable_nodes)
+        for _, i_pos in pairs(index_table) do
+            if can_fit(i_pos, width) then
+                pos = vector.new(i_pos.x, i_pos.y + 0.6, i_pos.z)
+                break
+            end
+        end
+    end
+
+    if not minetest.registered_nodes[minetest.get_node(pos_under(tpos)).name].walkable then
+        local min = vector.subtract(tpos, width)
+        local max = vector.add(tpos, width)
+
+        local index_table = minetest.find_nodes_in_area_under_air(min, max, mob_core.walkable_nodes)
+        for _, i_pos in pairs(index_table) do
+            if minetest.registered_nodes[minetest.get_node(i_pos).name].walkable then
+                tpos = vector.new(i_pos.x, i_pos.y + 1, i_pos.z)
+                break
+            end
+        end
+    end
+
+    local path = pathfinder.find_path(self, pos, tpos, 64, self.dtime)
+
+    if not path then return end
+
+    for i = #path, 1, -1 do
+
+        local under = minetest.get_node(pos_under(path[i]))
+
+        if minetest.registered_nodes[under.name]
+        and not minetest.registered_nodes[under.name].walkable then
+            table.remove(path, i)
+        end
+
+        local above = pos_above(path[i])
+
+        if not can_fit(path[i], width, true) then
+            local clear = move_from_wall(path[i], width + 1)
+            if clear and can_fit(clear, width)
+            and (path[i + 1]
+            and path[i].y <= path[i + 1].y) then
+                path[i] = clear
+            end
+        end
+
+        if vector.distance(pos, path[i]) <= width then
+            table.remove(path, i)
+        end
+    end
+
+    return path
 end
