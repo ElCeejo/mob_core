@@ -797,141 +797,90 @@ minetest.register_chatcommand("force_tame", {
 
 -- Spawning --
 
-function mob_core.get_biome_name(pos)
-	if not pos then return end
-	return minetest.get_biome_name(minetest.get_biome_data(pos).biome)
-end
-
 local find_node_height = 32
 
 local block_protected_spawn = minetest.settings:get_bool("block_protected_spawn") or true
 local mob_limit = minetest.settings:get_bool("mob_limit") or 6
 
-function mob_core.spawn(name, nodes, min_light, max_light, min_height,
-                        max_height, min_rad, max_rad, group, optional)
-    group = group or 1
-    if minetest.registered_entities[name] then
-        for _, player in ipairs(minetest.get_connected_players()) do
-            local mobs_amount = 0
-            for _, entity in pairs(minetest.luaentities) do
-                if entity.name == name then
-                    local ent_pos = entity.object:get_pos()
-                    if ent_pos and vector.distance(player:get_pos(), ent_pos) <=
-                        max_rad then
-                        mobs_amount = mobs_amount + 1
-                    end
-                end
-            end
+function mob_core.spawn(name, nodes, min_light, max_light, min_height, max_height, min_rad, max_rad, group)
+	if minetest.registered_entities[name] then
+		for _,player in ipairs(minetest.get_connected_players()) do
+			local spawn_mob = true
+			local mobs_amount = 0
 
-            local mob_spawned = false
+			for _, entity in pairs(minetest.luaentities) do
+				if entity.name == name then
+					local ent_pos = entity.object:get_pos()
+					if ent_pos and vector.distance(player:get_pos(), ent_pos) <= max_rad then
+						mobs_amount = mobs_amount + 1
+					end
+				end
+			end
 
-            local spawned_pos = nil
+			if mobs_amount >= mob_limit then
+				spawn_mob = false
+			end
 
-            if mobs_amount >= mob_limit then return end
+			local int = {-1,1}
+			local pos = vector.floor(vector.add(player:get_pos(),0.5))
 
-            local reliability = 3
+			local x,z
 
-            if optional and optional.reliability then
-                reliability = optional.reliability
-            end
+			--this is used to determine the axis buffer from the player
+			local axis = math.random(0,1)
 
-            for _ = 1, reliability do -- 3 attempts
-                local int = {-1, 1}
-                local pos = vector.floor(vector.add(player:get_pos(), 0.5))
+			--cast towards the direction
+			if axis == 0 then --x
+				x = pos.x + math.random(min_rad,max_rad)*int[math.random(1,2)]
+				z = pos.z + math.random(-max_rad,max_rad)
+			else --z
+				z = pos.z + math.random(min_rad,max_rad)*int[math.random(1,2)]
+				x = pos.x + math.random(-max_rad,max_rad)
+			end
 
-                local x, z
+			local spawner = minetest.find_nodes_in_area_under_air(
+				vector.new(x,pos.y-find_node_height,z),
+				vector.new(x,pos.y+find_node_height,z), nodes)
 
-                -- this is used to determine the axis buffer from the player
-                local axis = math.random(0, 1)
+			if table.getn(spawner) > 0 then
+				local mob_pos = spawner[1]
 
-                -- cast towards the direction
-                if axis == 0 then -- x
-                    x = pos.x + math.random(min_rad, max_rad) *
-                            int[random(1, 2)]
-                    z = pos.z + math.random(-max_rad, max_rad)
-                else -- z
-                    z = pos.z + math.random(min_rad, max_rad) *
-                            int[random(1, 2)]
-                    x = pos.x + math.random(-max_rad, max_rad)
-                end
+				if block_protected_spawn and minetest.is_protected(mob_pos, "") then
+					spawn_mob = false
+				end
 
-                local spawner = minetest.find_nodes_in_area_under_air(
-                                    vector.new(x - 1, pos.y - find_node_height,
-                                               z - 1), vector.new(x + 1,
-                                                                  pos.y +
-                                                                      find_node_height,
-                                                                  z + 1), nodes)
+				if mob_pos.y > max_height
+				or mob_pos.y < min_height then
+					spawn_mob = false
+				end
 
-                if table.getn(spawner) > 0 then
-                    local mob_pos = spawner[1]
+				local light = minetest.get_node_light(mob_pos)
+				if not light
+				or light > max_light
+				or light < min_light then
+					spawn_mob = false
+				end
 
-                    if block_protected_spawn and
-                        minetest.is_protected(mob_pos, "") then
-                        return
-                    end
+				if spawn_mob then
 
-                    if optional then
-                        if optional.biomes then
-                            if not mob_core.find_val(optional.biomes,
-                                                     mob_core.get_biome_name(pos)) then
-                                return
-                            end
-                        end
-                    end
-
-                    if mob_pos.y > max_height or mob_pos.y < min_height then
-                        return
-                    end
-
-                    local light = minetest.get_node_light(mob_pos)
-                    if not light or light > max_light or light < min_light then
-                        return
-                    end
-
-                    mob_spawned = true
-
-                    spawned_pos = mob_pos
-
-                    minetest.add_entity(mob_pos, name)
-
-                    if group then
-
-                        local spawned = 0
-
-                        local attempts = 0
-
-                        while spawned < group and attempts < group * 2 do
-                            local mobdef = minetest.registered_entities[name]
-                            local side = mobdef.collisionbox[4]
-                            local group_pos =
-                                vector.new(
-                                    mob_pos.x + (random(-group, group) * side),
-                                    mob_pos.y,
-                                    mob_pos.z + (random(-group, group) * side))
-                            local spawn_pos =
-                                minetest.find_nodes_in_area_under_air(
-                                    vector.new(group_pos.x, group_pos.y - 8,
-                                               group_pos.z), vector.new(
-                                        group_pos.x, group_pos.y + 8,
-                                        group_pos.z), nodes)
-                            if spawn_pos[1] then
-                                minetest.add_entity(
-                                    vector.new(spawn_pos[1].x, spawn_pos[1].y +
-                                                   math.abs(
-                                                       mobdef.collisionbox[2]),
-                                               spawn_pos[1].z), name)
-                                spawned = spawned + 1
-                            end
-                            attempts = attempts + 1
-                        end
-                    end
-                    break
-                end
-            end
-            return mob_spawned, spawned_pos
-        end
-    end
+					for i = 1, group do
+						local mobdef = minetest.registered_entities[name]
+						local col4 = mobdef.collisionbox[4]
+						local group_pos = minetest.find_nodes_in_area_under_air(
+							{x=mob_pos.x-group-col4,y=mob_pos.y-group,z=mob_pos.z-group-col4},
+							{x=mob_pos.x+group+col4,y=mob_pos.y+group,z=mob_pos.z+group+col4},
+							nodes
+						)
+						if #group_pos < group then group = group-1 end
+						group_pos[i].y = group_pos[i].y + math.abs(mobdef.collisionbox[2])
+						minetest.add_entity(group_pos[i], name)
+					end
+				end
+			end
+		end
+	end
 end
+
 
 mob_core.registered_on_spawns = {}
 
