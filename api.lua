@@ -805,7 +805,7 @@ end
 local find_node_height = 32
 
 local block_protected_spawn = minetest.settings:get_bool("block_protected_spawn") or true
-local mob_limit = minetest.settings:get("mob_limit") or 6
+local mob_limit = tonumber(minetest.settings:get("mob_limit") or 6)
 
 function mob_core.spawn(name, nodes, min_light, max_light, min_height,
                         max_height, min_rad, max_rad, group, optional)
