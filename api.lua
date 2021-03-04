@@ -932,10 +932,17 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
 							end
 						end
 					end
+
+					--moved the execution of registered_on_spawns here
+					if mob_spawned == true and mob_core.registered_on_spawns[def.name] then
+                        mob_core.registered_spawns[def.name].last_pos = last_pos
+                        local on_spawn = mob_core.registered_on_spawns[def.name]
+                        on_spawn.func(unpack(on_spawn.args))
+                    end
                     break
                 end
             end
-            return mob_spawned, spawned_pos
+            --return mob_spawned, spawned_pos
         end
     end
 end
@@ -952,7 +959,7 @@ function mob_core.register_spawn(def, interval, chance)
             spawn_timer = spawn_timer + dtime
             if spawn_timer > interval then
                 if random(1, chance) == 1 then
-                    local spawned, last_pos =
+                    -- local spawned, last_pos =
                         mob_core.spawn(
                             def.name,
                             def.nodes or {"group:soil", "group:stone"},
@@ -963,11 +970,11 @@ function mob_core.register_spawn(def, interval, chance)
                             def.group or 1,
                             def.optional or nil
                         )
-                    if spawned and mob_core.registered_on_spawns[def.name] then
-                        mob_core.registered_spawns[def.name].last_pos = last_pos
-                        local on_spawn = mob_core.registered_on_spawns[def.name]
-                        on_spawn.func(unpack(on_spawn.args))
-                    end
+                    -- if spawned and mob_core.registered_on_spawns[def.name] then
+                    --     mob_core.registered_spawns[def.name].last_pos = last_pos
+                    --     local on_spawn = mob_core.registered_on_spawns[def.name]
+                    --     on_spawn.func(unpack(on_spawn.args))
+                    -- end
                 end
                 spawn_timer = 0
             end
