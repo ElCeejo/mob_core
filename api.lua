@@ -931,18 +931,17 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
 								attempts = attempts + 1
 							end
 						end
-					end
-
-					--moved the execution of registered_on_spawns here
-					if mob_spawned == true and mob_core.registered_on_spawns[def.name] then
-                        mob_core.registered_spawns[def.name].last_pos = last_pos
-                        local on_spawn = mob_core.registered_on_spawns[def.name]
-                        on_spawn.func(unpack(on_spawn.args))
-                    end
+					end					
                     break
                 end
             end
             --return mob_spawned, spawned_pos
+			--moved the execution of registered_on_spawns here
+			if mob_spawned == true and mob_core.registered_on_spawns[def.name] then
+				mob_core.registered_spawns[def.name].last_pos = spawned_pos
+				local on_spawn = mob_core.registered_on_spawns[def.name]
+				on_spawn.func(unpack(on_spawn.args))
+			end
         end
     end
 end
@@ -970,6 +969,7 @@ function mob_core.register_spawn(def, interval, chance)
                             def.group or 1,
                             def.optional or nil
                         )
+						-- moved into mob_core.spawn()
                     -- if spawned and mob_core.registered_on_spawns[def.name] then
                     --     mob_core.registered_spawns[def.name].last_pos = last_pos
                     --     local on_spawn = mob_core.registered_on_spawns[def.name]
