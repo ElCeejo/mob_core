@@ -158,6 +158,7 @@ local function sensor_ceil(self, range)
     local pos = self.object:get_pos()
     local node = minetest.get_node(pos)
     local dist = 0
+    if not node then return range end
     while not minetest.registered_nodes[node.name].walkable and dist <= range do
         pos.y = pos.y + 1
         node = minetest.get_node(pos)
@@ -174,6 +175,7 @@ local function sensor_floor(self, range, water)
     local pos = self.object:get_pos()
     local node = minetest.get_node(pos)
     local dist = 0
+    if not node then return range end
     while not minetest.registered_nodes[node.name].walkable and abs(dist) <=
         range do
         pos.y = pos.y - 1
