@@ -175,7 +175,7 @@ end
 function mob_core.logic_aerial_takeoff_flee_player(self, prty, lift_force) -- Attack specified mobs
     local player = mobkit.get_nearby_player(self)
     if player and vector.distance(self.object:get_pos(), player:get_pos()) < 8 then
-        mob_core.hq_takeoff(self, prty, lift_force)
+        mob_core.hq_takeoff_and_fly_continuously(self, prty, lift_force)
         return
     end
 end

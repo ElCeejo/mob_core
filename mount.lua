@@ -159,9 +159,8 @@ function mob_core.hq_mount_logic(self,prty)
         self.object:set_velocity({x=vel.x,y=vel.y,z=vel.y})
         go_forward(self,tvel)
         if ctrl.sneak then
-            mobkit.clear_queue_low(self)
-            mobkit.clear_queue_high(self)
-            mob_core.detach(self.driver, {x = 1, y = 0, z = 1})
+			mob_core.detach(self.driver, {x = 1, y = 0, z = 1})
+			return true
         end
 	end
 	mobkit.queue_high(self,func,prty)
