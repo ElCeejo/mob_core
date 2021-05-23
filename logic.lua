@@ -187,7 +187,7 @@ end
 function mob_core.random_drop(self, interval, chance, item)
     self.drop_timer = (self.drop_timer or 0) + 1
     if self.drop_timer >= interval then
-        self.droptimer = 0
+        self.drop_timer = 0
         if math.random(1, chance) == 1 then
             local pos = self.object:get_pos()
             minetest.add_item(pos, item)

@@ -2,10 +2,13 @@
 -- Mob Core API --
 ------------------
 ----- Ver 0.1 ----
+
 ---------------------
 -- Local Variables --
 ---------------------
+
 local random = math.random
+local abs = math.abs
 
 local vec_dir = vector.direction
 local vec_dist = vector.distance
@@ -162,6 +165,30 @@ end
 -----------------------
 -- Utility Functions --
 -----------------------
+
+function mob_core.sensor_floor(self, range, water)
+    water = water or false
+    local pos = self.object:get_pos()
+    local node = minetest.get_node(pos)
+    local dist = 0
+    while (not minetest.registered_nodes[node.name].walkable
+    or (water and minetest.registered_nodes[node.name].drawtype ~= "liquid"))
+    and abs(dist) <= range do
+        pos.y = pos.y - 1
+        node = minetest.get_node(pos)
+        dist = dist + 1
+        if minetest.registered_nodes[node.name].walkable
+        or (water and minetest.registered_nodes[node.name].drawtype == "liquid") then
+            break
+        end
+    end
+    if minetest.registered_nodes[node.name].walkable
+    or (water and minetest.registered_nodes[node.name].drawtype == "liquid") then
+        return dist
+    elseif dist >= range then
+        return range
+    end
+end
 
 ------------
 -- Sounds --
@@ -613,8 +640,7 @@ function mob_core.on_activate(self, staticdata, dtime_s) -- On Activate
     self.owner = mobkit.recall(self, "owner") or nil
     self.protected = mobkit.recall(self, "protected") or false
     self.food = mobkit.recall(self, "food") or 0
-    self.breed_mode = mobkit.recall(self, "breed_mode") or false
-    self.breed_timer = mobkit.recall(self, "breed_timer") or 0
+    self.punch_timer = 0
     self.growth_stage = mobkit.recall(self, "growth_stage") or 4
     self.growth_timer = mobkit.recall(self, "growth_timer") or 1801
     self.child = mobkit.recall(self, "child") or false
@@ -786,7 +812,7 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
             for _, entity in pairs(minetest.luaentities) do
                 if entity.name == name then
                     local ent_pos = entity.object:get_pos()
-                    if ent_pos and vector.distance(player:get_pos(), ent_pos) <=
+                    if ent_pos and vec_dist(player:get_pos(), ent_pos) <=
                         768 then
                         mobs_amount = mobs_amount + 1
                     end
@@ -798,22 +824,22 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
             local int = {-1, 1}
             local pos = vector.floor(vector.add(player:get_pos(), 0.5))
 
-            local x, z
+            local x0, z0
 
             -- this is used to determine the axis buffer from the player
             local axis = math.random(0, 1)
 
             -- cast towards the direction
             if axis == 0 then -- x
-                x = pos.x + math.random(min_rad, max_rad) * int[random(1, 2)]
-                z = pos.z + math.random(-max_rad, max_rad)
+                x0 = pos.x + math.random(min_rad, max_rad) * int[random(1, 2)]
+                z0 = pos.z + math.random(-max_rad, max_rad)
             else -- z
-                z = pos.z + math.random(min_rad, max_rad) * int[random(1, 2)]
-                x = pos.x + math.random(-max_rad, max_rad)
+                z0 = pos.z + math.random(min_rad, max_rad) * int[random(1, 2)]
+                x0 = pos.x + math.random(-max_rad, max_rad)
             end
 
-            local pos1 = vector.new(x - 5, pos.y - find_node_height, z - 5)
-            local pos2 = vector.new(x + 5, pos.y + find_node_height, z + 5)
+            local pos1 = vector.new(x0 - 5, pos.y - find_node_height, z0 - 5)
+            local pos2 = vector.new(x0 + 5, pos.y + find_node_height, z0 + 5)
             local vm = minetest.get_voxel_manip()
             local emin, emax = vm:read_from_map(pos1, pos2)
             local area = VoxelArea:new{MinEdge = emin, MaxEdge = emax}
@@ -956,6 +982,7 @@ function mob_core.collision_detection(self)
     local hitbox = mob_core.get_hitbox(self)
     local width = -hitbox[1] + hitbox[4] + 0.5
     local objects = minetest.get_objects_inside_radius(pos, width)
+    if #objects < 2 then return end
     local is_in_bed = function(object)
         if not beds.player or not object:is_player() or
             (object:is_player() and not beds.player[object:get_player_name()]) then
@@ -964,14 +991,15 @@ function mob_core.collision_detection(self)
         return true
     end
     local col_no = 0
-    for _, object in ipairs(objects) do
+    for i = 1, #objects do
+        local object = objects[i]
         if (object and object ~= self.object) and
             (not object:get_attach() or object:get_attach() ~= self.object) and
             (not self.object:get_attach() or self.object:get_attach() ~= object) and
             (((object:get_luaentity() and object:get_luaentity().logic)) or
                 (object:is_player() and not is_in_bed(object))) then
             col_no = col_no + 1
-            if col_no > 6 then break end
+            if col_no >= 5 then break end
             local pos2 = object:get_pos()
             local dir = vec_dir(pos, pos2)
             dir.y = 0
@@ -1112,16 +1140,14 @@ end
 -- Step Function --
 
 function mob_core.on_step(self, dtime, moveresult)
-    mobkit.stepfunc(self, dtime)
-    if moveresult then self.moveresult = moveresult end
-    if self.owner_target and not mobkit.exists(self.owner_target) then
+    mobkit.stepfunc(self, dtime, moveresult)
+    if self.owner_target
+    and not mobkit.exists(self.owner_target) then
         self.owner_target = nil
     end
-    if self.custom_punch_target and not mobkit.exists(self.custom_punch_target) then
-        self.custom_punch_target = nil
+    if self.push_on_collide then
+        mob_core.collision_detection(self)
     end
-    if self.push_on_collide then mob_core.collision_detection(self) end
-    self.collided_objects = nil
 end
 
 --------------------------
@@ -1414,7 +1440,7 @@ local function move_from_wall(pos, width)
         for y = pos1.y, pos2.y do
             for z = pos1.z, pos2.z do
                 local p2 = vector.new(x, y, z)
-                if can_fit(p2, width) and vector.distance(pos, p2) < width then
+                if can_fit(p2, width) and vec_dist(pos, p2) < width then
                     return p2
                 end
             end
@@ -1465,7 +1491,7 @@ function mob_core.find_path_lite(pos, tpos, width)
 
     for i = #path, 1, -1 do
         if not path then return end
-        if vector.distance(pos, path[i]) <= width + 1 then
+        if vec_dist(pos, path[i]) <= width + 1 then
             for _i = 3, #path do path[_i - 1] = path[_i] end
         end
 
@@ -1481,7 +1507,7 @@ function mob_core.find_path_lite(pos, tpos, width)
         raw = path
         if #path > 3 then
 
-            if vector.distance(pos, path[i]) < width then
+            if vec_dist(pos, path[i]) < width then
                 table.remove(path, i)
             end
 
@@ -1597,12 +1623,6 @@ function mob_core.find_path(self, tpos)
     table.remove(path, 1)
 
     for i = #path, 1, -1 do
-
-        local under = minetest.get_node(pos_under(path[i]))
-
-        --[[if minetest.registered_nodes[under.name] and not walkable(under) then
-            table.remove(path, i)
-        end]]
 
         if path[i] then
             if (not can_fit(path[i], width, true) and path[i + 1] and

@@ -149,7 +149,7 @@ local function get_neighbor_ground_level(pos, jump_height, fall_height, width)
     elseif get_platform(pos, width) == "buried" then
         repeat
             height = height + 1
-            if height > jump_height + 1 then return nil end
+            if height > jump_height then return nil end
             pos.y = pos.y + 1
             node = minetest.get_node(pos)
         until get_platform(pos, width) == "solid"
@@ -157,7 +157,7 @@ local function get_neighbor_ground_level(pos, jump_height, fall_height, width)
     else
         repeat
             height = height + 1
-            if height > fall_height + 1 then return nil end
+            if height > fall_height then return nil end
             pos.y = pos.y - 1
             node = minetest.get_node(pos)
         until get_platform(pos, width) == "solid"
