@@ -175,7 +175,7 @@ end
 function mob_core.logic_aerial_takeoff_flee_player(self, prty, lift_force) -- Attack specified mobs
     local player = mobkit.get_nearby_player(self)
     if player and vector.distance(self.object:get_pos(), player:get_pos()) < 8 then
-        mob_core.hq_takeoff(self, prty, lift_force)
+        mob_core.hq_takeoff_and_fly_continuously(self, prty, lift_force)
         return
     end
 end
@@ -187,7 +187,7 @@ end
 function mob_core.random_drop(self, interval, chance, item)
     self.drop_timer = (self.drop_timer or 0) + 1
     if self.drop_timer >= interval then
-        self.droptimer = 0
+        self.drop_timer = 0
         if math.random(1, chance) == 1 then
             local pos = self.object:get_pos()
             minetest.add_item(pos, item)
