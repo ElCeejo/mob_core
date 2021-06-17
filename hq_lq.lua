@@ -2,14 +2,20 @@
 -- Mob Core HQ/LQ Functions --
 ------------------------------
 ---------- Ver 0.1 -----------
+
 ------------
--- Locals --
+-- Math --
 ------------
+
 local random = math.random
 local pi = math.pi
 local abs = math.abs
 local ceil = math.ceil
 local min = math.min
+
+local function diff(a, b) -- Get difference between 2 angles
+    return math.atan2(math.sin(b - a), math.cos(b - a))
+end
 
 local function clamp(num, min_, max_)
     if num < min_ then
@@ -41,6 +47,10 @@ local function vec_cross(a, b)
         z = a.x * b.y - a.y * b.x
     }
 end
+
+--------------
+-- Settings --
+--------------
 
 local abr = minetest.get_mapgen_setting('active_block_range')
 local legacy_jump = minetest.settings:get_bool("legacy_jump")
@@ -140,22 +150,15 @@ end
 function mob_core.collision_avoidance(self)
     local box = hitbox(self)
     local width = abs(box[3]) + abs(box[6])
-    local pos = self.object:get_pos()
+    local pos = mobkit.get_stand_pos(self)
+    pos.y = pos.y + (self.height * 0.5) -- center of hitbox
     local yaw = self.object:get_yaw()
     local outset = self.obstacle_avoidance_range or width
     local ahead = vector.add(pos, vector.multiply(minetest.yaw_to_dir(yaw),
                                                   width + outset))
     local can_fit = mob_core.can_fit(self, ahead)
     local collisions = index_collisions(self, ahead)
-    local immediate_collisions = index_collisions(self, pos)
     local obstacle = find_closest_pos(collisions, pos)
-    local immediate_obstacle = find_closest_pos(immediate_collisions, pos)
-    if immediate_obstacle then
-        local avoidance_path = vector.normalize(
-                                   (vector.subtract(pos, immediate_obstacle)))
-        local magnitude = (width * 2) - vec_dist(pos, immediate_obstacle)
-        return avoidance_path, magnitude, true
-    end
     if not can_fit and obstacle then
         local avoidance_path =
             vector.normalize((vector.subtract(pos, obstacle)))
@@ -1108,20 +1111,7 @@ local function moveable(self, pos)
                     local p3 = vector.new(p2.x, p2.y + 1, p2.z)
                     local node2 = minetest.get_node(p3)
                     local def2 = minetest.registered_nodes[node2.name]
-
                     if def2 and def2.walkable and mobkit.get_node_height(p3) > 0 then
-                        minetest.add_particle(
-                            {
-                                pos = p3,
-                                velocity = {x = 0, y = 0, z = 0},
-                                acceleration = {x = 0, y = 0, z = 0},
-                                expirationtime = 1,
-                                size = 8,
-                                collisiondetection = false,
-                                vertical = false,
-                                texture = "default_dirt.png",
-                                playername = "singleplayer"
-                            })
                         return false
                     end
                 elseif is_object_at_pos(self, p2) then
@@ -1275,7 +1265,7 @@ function mob_core.goto_next_waypoint(self, tpos, speed_factor)
         local yaw = self.object:get_yaw()
         local tyaw = minetest.dir_to_yaw(
                          vector.direction(self.object:get_pos(), pos2))
-        mobkit.lq_dumbwalk(self, pos2, speed_factor)
+        mob_core.lq_dumbwalk(self, pos2, speed_factor)
         return true
     end
 end
@@ -1302,11 +1292,14 @@ function mob_core.lq_dumbwalk(self, dest, speed_factor, anim)
 
         if not self.isonground then s_fctr = 0.2 end
 
-        if abs(tyaw - yaw) > 0.1 then
-            mobkit.turn2yaw(self, tyaw, (self.turn_rate or 6) + abs(tyaw - yaw))
+        local yaw_diff = diff(yaw, tyaw)
+
+        if abs(yaw_diff) > 0.1 then
+            mobkit.turn2yaw(self, tyaw, (self.turn_rate or 6) + abs(clamp(yaw_diff, -1, 1)))
         end
 
-        if (vec_dist(pos, dest) + abs(pos.y - dest.y)) < 1 then
+        if mobkit.isnear2d(pos, dest, clamp(width * 0.3125, 0.25, 1.5))
+        and abs(dest.y - pos.y) < 1 then
             if (not self.isonground and not self.isinliquid) or
                 abs(dest.y - pos.y) > 0.1 then
                 self.object:set_velocity({x = 0, y = y, z = 0})
@@ -1314,7 +1307,8 @@ function mob_core.lq_dumbwalk(self, dest, speed_factor, anim)
             return true
         end
 
-        if self.isonground or self.isinliquid then
+        if self.isonground
+        or self.isinliquid then
             mobkit.go_forward_horizontal(self, self.max_speed * speed_factor)
         end
     end

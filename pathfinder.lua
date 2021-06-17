@@ -111,14 +111,14 @@ local function moveable(pos, width, height, self)
                 local def = minetest.registered_nodes[node.name]
                 if def
                 and def.walkable
-                and mobkit.get_node_height(p2) > 0 then
+                and mobkit.get_node_height(p2) > 4.5 then
                     if p2.y > pos2.y then return false end
                     local p3 = vector.new(p2.x, p2.y + 1, p2.z)
                     local node2 = minetest.get_node(p3)
                     local def2 = minetest.registered_nodes[node2.name]
                     if def2
                     and def2.walkable
-                    and mobkit.get_node_height(p3) > 0 then
+                    and mobkit.get_node_height(p3) > 4.5 then
                         return false
                     end
                 elseif is_object_at_pos(self, p2) then
