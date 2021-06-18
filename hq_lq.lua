@@ -467,7 +467,7 @@ function mob_core.hq_fly_continuously(self, prty, speed_factor)
 
         if ceiling <= math.abs(self.view_range / 4) then lift = -max_lift end
 
-        if floor <= self.floor_avoidance_range or self.isinliquid then
+        if floor <= (self.floor_avoidance_range or math.ceil(hitbox(self)[4]) * 2) or self.isinliquid then
             lift = max_lift
         end
 
@@ -539,7 +539,7 @@ function mob_core.hq_fly_and_soar(self, prty, speed_factor)
         -- Steer from obstacles
         if steer_to then tyaw = minetest.dir_to_yaw(steer_to) end
         -- Avoid ground
-        if floor <= self.floor_avoidance_range then lift = max_lift end
+        if floor <= (self.floor_avoidance_range or math.ceil(hitbox(self)[4]) * 2) then lift = max_lift end
         -- Avoid ceilings
         if ceiling <= math.abs(self.view_range / 4) then lift = -max_lift end
         -- If there is no obstacle, turn at 1 rad/s
@@ -646,7 +646,7 @@ function mob_core.hq_aerial_follow_holding(self, prty, player) -- Follow Player
 
                 lift = dir.y
 
-                if floor and floor <= self.floor_avoidance_range then
+                if floor and floor <= (self.floor_avoidance_range or math.ceil(hitbox(self)[4]) * 2) then
                     if lift < 1 then lift = lift + 0.2 end
                 end
                 if ceiling and ceiling <= math.abs(self.view_range / 4) then
@@ -756,7 +756,7 @@ function mob_core.hq_aqua_roam(self, prty, speed_factor)
         local surface = sensor_surface(self, self.view_range)
         local floor = sensor_floor(self, self.view_range)
 
-        if floor <= self.floor_avoidance_range then
+        if floor <= (self.floor_avoidance_range or math.ceil(hitbox(self)[4]) * 2) then
             if lift < 1 then lift = lift + 0.2 end
         end
 
@@ -792,7 +792,7 @@ function mob_core.hq_aqua_roam(self, prty, speed_factor)
         end
 
         if mobkit.timer(self, random(3, 6)) then -- Ocassionally go down
-            if floor > self.floor_avoidance_range and surface >
+            if floor > (self.floor_avoidance_range or math.ceil(hitbox(self)[4]) * 2) and surface >
                 self.surface_avoidance_range then
                 if math.random(1, 2) == 1 then
                     lift = -0.5
@@ -891,7 +891,7 @@ function mob_core.hq_aqua_attack(self, prty, target)
 
         lift = dir.y
 
-        if floor <= self.floor_avoidance_range then
+        if floor <= (self.floor_avoidance_range or math.ceil(hitbox(self)[4]) * 2) then
             if lift < 1 then lift = lift + 0.2 end
         end
 
@@ -1002,7 +1002,7 @@ function mob_core.hq_aqua_follow_holding(self, prty, player) -- Follow Player
 
                 lift = dir.y
 
-                if floor <= self.floor_avoidance_range then
+                if floor <= (self.floor_avoidance_range or math.ceil(hitbox(self)[4]) * 2) then
                     if lift < 1 then lift = lift + 0.2 end
                 end
 
