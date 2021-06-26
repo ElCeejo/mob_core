@@ -9,6 +9,7 @@
 
 local random = math.random
 local abs = math.abs
+local ceil = math.ceil
 
 local vec_dir = vector.direction
 local vec_dist = vector.distance
@@ -195,6 +196,24 @@ function mob_core.sensor_floor(self, range, water)
     elseif dist >= range then
         return range
     end
+end
+
+function mob_core.is_moveable(pos, width, height)
+    local pos1 = vector.new(pos.x - width, pos.y, pos.z - width)
+    local pos2 = vector.new(pos.x + width, pos.y, pos.z + width)
+    for x = pos1.x, pos2.x do
+        for z = pos1.z, pos2.z do
+            local pos3 = vector.new(x, (pos.y + height), z)
+            local pos4 = {x = pos3.x, y = pos.y + 1, z = pos3.z}
+            local ray = minetest.raycast(pos3, pos4, false, false)
+            for pointed_thing in ray do
+                if pointed_thing.type == "node" then
+                    return false
+                end
+            end
+        end
+    end
+    return true
 end
 
 ------------
@@ -1729,30 +1748,6 @@ local function closest_num(val, tbl)
     return n
 end
 
-local function moveable(pos, width, height)
-    local pos1 = vector.new(pos.x - width, pos.y, pos.z - width)
-    local pos2 = vector.new(pos.x + width, pos.y + height, pos.z + width)
-    for z = pos1.z, pos2.z do
-        for y = pos1.y, pos2.y do
-            for x = pos1.x, pos2.x do
-                local p2 = vector.new(x, y, z)
-                local node = minetest.get_node(p2)
-                if minetest.registered_nodes[node.name] and
-                    minetest.registered_nodes[node.name].walkable then
-                    if p2.y > pos2.y then return false end
-                    local p3 = vector.new(p2.x, p2.y + 1, p2.z)
-                    local node2 = minetest.get_node(p3)
-                    if minetest.registered_nodes[node2.name] and
-                        minetest.registered_nodes[node2.name].walkable then
-                        return false
-                    end
-                end
-            end
-        end
-    end
-    return true
-end
-
 local function is_vec_in_tbl(vec, tbl)
     if not tbl or #tbl < 1 then return false end
     for i = 1, #tbl do
@@ -1786,7 +1781,7 @@ function mob_core.find_dumb_path(self, pos2, step_size, visualize)
         {x = 0, y = 0, z = -step_size},
         {x = step_size, y = 0, z = -step_size}
     }
-    local repulse = {}
+    local width = ceil(mob_core.get_hitbox(self)[4])
     local fail_ceil = math.ceil(dist_2d(pos1, pos2) * 1.5)
     local iter = 1
     local init_fail = false
@@ -1795,13 +1790,13 @@ function mob_core.find_dumb_path(self, pos2, step_size, visualize)
         local candidates = table.copy(neighbors)
         for i = #candidates, 1, -1  do
             candidates[i] = get_ground_level(vector.add(path[#path], candidates[i]), self.jump_height or 1.26)
-            if not moveable(candidates[i], mob_core.get_hitbox(self)[4], self.height - 0.5) then
+            if not mob_core.is_moveable(candidates[i], width, self.height - 0.5) then
                 local ground_candid = {
                     x = candidates[i].x,
                     y = candidates[i].y + self.jump_height or 1.26,
                     z = candidates[i].z
                 }
-                if not moveable(ground_candid, mob_core.get_hitbox(self)[4], self.height - 0.5) then
+                if not mob_core.is_moveable(ground_candid, width, self.height - 0.5) then
                     table.remove(candidates, i)
                 end
             end
@@ -1825,12 +1820,117 @@ function mob_core.find_dumb_path(self, pos2, step_size, visualize)
             local candidates = table.copy(neighbors)
             for i = #candidates, 1, -1  do
                 candidates[i] = get_ground_level(vector.add(path[#path], candidates[i]), self.jump_height or 1.26)
-                if not moveable(candidates[i], mob_core.get_hitbox(self)[4], self.height - 0.5) then
+                if not mob_core.is_moveable(candidates[i], width, self.height - 0.5) then
                     table.remove(candidates, i)
                 end
             end
             if candidates[1] then
                 table.sort(candidates, function(a, b) return dist_2d(a, pos2) < dist_2d(b, pos2) end)
+                if path[#path - 1]
+                and vector.equals(candidates[1], path[#path - 1]) then -- if we've found a loop
+                    break
+                end
+                table.insert(path, candidates[1])
+            end
+            iter = iter + 1
+        end
+    end
+    if visualize then
+        for i = 1, #path do
+            minetest.add_particle({
+                pos = path[i],
+                velocity = {x=0, y=0, z=0},
+                acceleration = {x=0, y=0, z=0},
+                expirationtime = 0.1,
+                size = 12,
+                collisiondetection = false,
+                vertical = false,
+                texture = "mob_core_green_particle.png",
+                playername = "singleplayer"
+            })
+        end
+    end
+    if not init_fail then
+        path = reverse(path)
+    end
+    return path
+end
+
+function mob_core.find_dumb_3d_path(self, pos2, step_size, visualize)
+    local pos1 = self.object:get_pos()
+    pos1 = {
+        x = math.floor(pos1.x + 0.5),
+        y = math.floor(pos1.y + 0.5),
+        z = math.floor(pos1.z + 0.5)
+    }
+    pos2 = {
+        x = math.floor(pos2.x + 0.5),
+        y = math.floor(pos2.y + 0.5),
+        z = math.floor(pos2.z + 0.5)
+    }
+    local width = ceil(mob_core.get_hitbox(self)[4])
+    local path = {pos2}
+    local neighbors = {
+        {x = step_size, y = 0, z = 0},
+        {x = step_size, y = 0, z = step_size},
+        {x = 0, y = 0, z = step_size},
+        {x = -step_size, y = 0, z = step_size},
+        {x = -step_size, y = 0, z = 0},
+        {x = -step_size, y = 0, z = -step_size},
+        {x = 0, y = 0, z = -step_size},
+        {x = step_size, y = 0, z = -step_size}
+    }
+    local fail_ceil = math.ceil(dist_2d(pos1, pos2) * 1.5)
+    local iter = 1
+    local init_fail = false
+    while vec_dist(path[#path], pos1) > step_size * 1.5
+    and iter < fail_ceil do
+        local candidates = table.copy(neighbors)
+        for i = #candidates, 1, -1  do
+            candidates[i] = vector.add(path[#path], candidates[i])
+            local i_pos = candidates[i]
+            if mob_core.is_moveable({x = i_pos.x, y = i_pos.y + step_size, z = i_pos.z}, width, self.height - 0.5) then
+                table.insert(candidates, {x = i_pos.x, y = i_pos.y + step_size, z = i_pos.z})
+            end
+            if mob_core.is_moveable({x = i_pos.x, y = i_pos.y - step_size, z = i_pos.z}, width, self.height - 0.5) then
+                table.insert(candidates, {x = i_pos.x, y = i_pos.y - step_size, z = i_pos.z})
+            end
+            if not mob_core.is_moveable(i_pos, width, self.height - 0.5) then
+                table.remove(candidates, i)
+            end
+        end
+        if candidates[1] then
+            table.sort(candidates, function(a, b) return vec_dist(a, pos1) < vec_dist(b, pos1) end)
+            if path[#path - 1]
+            and vector.equals(candidates[1], path[#path - 1]) then -- if we've found a loop
+                init_fail = true
+                break
+            end
+            table.insert(path, candidates[1])
+        end
+        iter = iter + 1
+    end
+    if init_fail then
+        path = {pos1}
+        iter = 1
+        while vec_dist(path[#path], pos2) > step_size * 1.5
+        and iter < fail_ceil do
+            local candidates = table.copy(neighbors)
+            for i = #candidates, 1, -1  do
+                candidates[i] = vector.add(path[#path], candidates[i])
+                local i_pos = candidates[i]
+                if mob_core.is_moveable({x = i_pos.x, y = i_pos.y + step_size, z = i_pos.z}, width, self.height - 0.5) then
+                    table.insert(candidates, {x = i_pos.x, y = i_pos.y + step_size, z = i_pos.z})
+                end
+                if mob_core.is_moveable({x = i_pos.x, y = i_pos.y - step_size, z = i_pos.z}, width, self.height - 0.5) then
+                    table.insert(candidates, {x = i_pos.x, y = i_pos.y - step_size, z = i_pos.z})
+                end
+                if not mob_core.is_moveable(i_pos, width, self.height - 0.5) then
+                    table.remove(candidates, i)
+                end
+            end
+            if candidates[1] then
+                table.sort(candidates, function(a, b) return vec_dist(a, pos2) < vec_dist(b, pos2) end)
                 if path[#path - 1]
                 and vector.equals(candidates[1], path[#path - 1]) then -- if we've found a loop
                     break
