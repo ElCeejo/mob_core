@@ -1041,6 +1041,7 @@ function mob_core.collision_detection(self)
     local objects = minetest.get_objects_inside_radius(pos, width)
     if #objects < 2 then return end
     local is_in_bed = function(object)
+        if not minetest.get_modpath("beds") then return false end
         if not beds.player or not object:is_player() or
             (object:is_player() and not beds.player[object:get_player_name()]) then
             return false
