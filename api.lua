@@ -853,8 +853,7 @@ end
 
 local find_node_height = 32
 
-local block_protected_spawn =
-    minetest.settings:get_bool("block_protected_spawn") or true
+local block_protected_spawn = minetest.settings:get_bool("block_protected_spawn") or true
 local mob_limit = tonumber(minetest.settings:get("mob_limit")) or 6
 
 function mob_core.spawn(name, nodes, min_light, max_light, min_height,
@@ -869,8 +868,8 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
             for _, entity in pairs(minetest.luaentities) do
                 if entity.name == name then
                     local ent_pos = entity.object:get_pos()
-                    if ent_pos and vec_dist(player:get_pos(), ent_pos) <=
-                        768 then
+                    if ent_pos
+                    and vec_dist(player:get_pos(), ent_pos) <= 1024 then
                         mobs_amount = mobs_amount + 1
                     end
                 end
@@ -910,7 +909,9 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
                         local vi = area:index(x, y, z)
                         local vi_pos = area:position(vi)
                         local node = minetest.get_node(vi_pos)
-                        if minetest.registered_nodes[node.name].walkable then
+                        if node
+                        and node.name
+                        and minetest.registered_nodes[node.name].walkable then
                             local _vi = area:index(x, y + 1, z)
                             if data[_vi] == minetest.get_content_id("air") then
                                 table.insert(spawner, area:position(_vi))
