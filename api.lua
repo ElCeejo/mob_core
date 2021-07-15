@@ -864,6 +864,7 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
     local spawned_pos = nil
     if minetest.registered_entities[name] then
         for _, player in ipairs(minetest.get_connected_players()) do
+            local spawn_mob = true
             local mobs_amount = 0
             for _, entity in pairs(minetest.luaentities) do
                 if entity.name == name then
@@ -875,7 +876,7 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
                 end
             end
 
-            if mobs_amount >= mob_limit then return end
+            if mobs_amount >= mob_limit then spawn_mob = false end
 
             local int = {-1, 1}
             local pos = vector.floor(vector.add(player:get_pos(), 0.5))
@@ -926,66 +927,74 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
                 local mob_pos = spawner[1]
 
                 if block_protected_spawn and minetest.is_protected(mob_pos, "") then
-                    return
+                    spawn_mob = false
                 end
 
                 if optional then
                     if optional.biomes then
-                        if not mob_core.find_val(optional.biomes,
-                                                 mob_core.get_biome_name(pos)) then
-                            return
+                        if not mob_core.find_val(optional.biomes, mob_core.get_biome_name(pos)) then
+                            spawn_mob = false
                         end
                     end
                 end
 
                 if mob_pos.y > max_height or mob_pos.y < min_height then
-                    return
+                    spawn_mob = false
                 end
 
                 local light = minetest.get_node_light(mob_pos)
                 if not light or light > max_light or light < min_light then
-                    return
+                    spawn_mob = false
                 end
 
-                mob_spawned = true
 
-                spawned_pos = mob_pos
+                if spawn_mob then
 
-                local obj = minetest.add_entity(mob_pos, name)
+                    mob_spawned = true
 
-                table.insert(total_mobs, obj)
-
-                if group then
-
-                    local attempts = 0
-
-                    while attempts < group do
-                        local mobdef = minetest.registered_entities[name]
-                        local side = mobdef.collisionbox[4]
-                        local group_pos =
-                            vector.new(mob_pos.x +
-                                           (random(-group, group) * side),
-                                       mob_pos.y, mob_pos.z +
-                                           (random(-group, group) * side))
-                        local spawn_pos =
-                            minetest.find_nodes_in_area_under_air(
-                                vector.new(group_pos.x, group_pos.y - 8,
-                                           group_pos.z),
-                                vector.new(group_pos.x, group_pos.y + 8,
-                                           group_pos.z), nodes)
-                        if spawn_pos[1] then
-                            local obj_i =
-                                minetest.add_entity(
-                                    vector.new(spawn_pos[1].x, spawn_pos[1].y +
-                                                   math.abs(
-                                                       mobdef.collisionbox[2]),
-                                               spawn_pos[1].z), name)
-                            table.insert(total_mobs, obj_i)
+                    spawned_pos = mob_pos
+    
+                    local obj = minetest.add_entity(mob_pos, name)
+    
+                    table.insert(total_mobs, obj)
+    
+                    if group then
+    
+                        local attempts = 0
+    
+                        while attempts < group do
+                            local mobdef = minetest.registered_entities[name]
+                            local side = mobdef.collisionbox[4]
+                            local group_pos =
+                                vector.new(mob_pos.x +
+                                               (random(-group, group) * side),
+                                           mob_pos.y, mob_pos.z +
+                                               (random(-group, group) * side))
+                            local spawn_pos =
+                                minetest.find_nodes_in_area_under_air(
+                                    vector.new(group_pos.x, group_pos.y - 8,
+                                               group_pos.z),
+                                    vector.new(group_pos.x, group_pos.y + 8,
+                                               group_pos.z), nodes)
+                            if spawn_pos[1] then
+                                local obj_i =
+                                    minetest.add_entity(
+                                        vector.new(spawn_pos[1].x, spawn_pos[1].y +
+                                                       math.abs(
+                                                           mobdef.collisionbox[2]),
+                                                   spawn_pos[1].z), name)
+                                table.insert(total_mobs, obj_i)
+                            end
+                            attempts = attempts + 1
                         end
-                        attempts = attempts + 1
+                    end
+                    if mob_core.registered_on_spawns[name] then
+                        mob_core.registered_spawns[name].last_pos = spawned_pos
+                        mob_core.registered_spawns[name].mobs = total_mobs
+                        local on_spawn = mob_core.registered_on_spawns[name]
+                        on_spawn.func(unpack(on_spawn.args))
                     end
                 end
-                break
             end
         end
         return mob_spawned, spawned_pos, total_mobs
@@ -1012,12 +1021,6 @@ function mob_core.register_spawn(def, interval, chance)
                                        def.max_height or 31000,
                                        def.min_rad or 24, def.max_rad or 256,
                                        def.group or 1, def.optional or nil)
-                    if spawned and mob_core.registered_on_spawns[def.name] then
-                        mob_core.registered_spawns[def.name].last_pos = last_pos
-                        mob_core.registered_spawns[def.name].mobs = mobs
-                        local on_spawn = mob_core.registered_on_spawns[def.name]
-                        on_spawn.func(unpack(on_spawn.args))
-                    end
                 end
                 spawn_timer = 0
             end
@@ -1043,8 +1046,10 @@ function mob_core.collision_detection(self)
     if #objects < 2 then return end
     local is_in_bed = function(object)
         if not minetest.get_modpath("beds") then return false end
-        if not beds.player or not object:is_player() or
-            (object:is_player() and not beds.player[object:get_player_name()]) then
+        if not beds.player
+        or not object:is_player()
+        or (object:is_player()
+        and not beds.player[object:get_player_name()]) then
             return false
         end
         return true
