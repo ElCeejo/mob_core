@@ -27,6 +27,11 @@ local creative = minetest.settings:get_bool("creative_mode")
 -- Helper Functions --
 ----------------------
 
+local function is_node_walkable(name)
+    local def = minetest.registered_nodes[name]
+    return def and def.walkable
+end
+
 local function all_first_to_upper(str)
     str = string.gsub(" " .. str, "%W%l", string.upper):sub(2)
     return str
@@ -179,18 +184,18 @@ function mob_core.sensor_floor(self, range, water)
     local pos = self.object:get_pos()
     local node = minetest.get_node(pos)
     local dist = 0
-    while (not minetest.registered_nodes[node.name].walkable
+    while (not is_node_walkable(node.name)
     or (water and minetest.registered_nodes[node.name].drawtype ~= "liquid"))
     and abs(dist) <= range do
         pos.y = pos.y - 1
         node = minetest.get_node(pos)
         dist = dist + 1
-        if minetest.registered_nodes[node.name].walkable
+        if is_node_walkable(node.name)
         or (water and minetest.registered_nodes[node.name].drawtype == "liquid") then
             break
         end
     end
-    if minetest.registered_nodes[node.name].walkable
+    if is_node_walkable(node.name)
     or (water and minetest.registered_nodes[node.name].drawtype == "liquid") then
         return dist
     elseif dist >= range then
@@ -909,10 +914,9 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
                     for x = pos1.x, pos2.x do
                         local vi = area:index(x, y, z)
                         local vi_pos = area:position(vi)
-                        local node = minetest.get_node(vi_pos)
+                        local node = minetest.get_node_or_nil(vi_pos)
                         if node
-                        and node.name
-                        and minetest.registered_nodes[node.name].walkable then
+                        and is_node_walkable(node.name) then
                             local _vi = area:index(x, y + 1, z)
                             if data[_vi] == minetest.get_content_id("air") then
                                 table.insert(spawner, area:position(_vi))
@@ -1483,7 +1487,7 @@ local function can_fit(pos, width, single_plane)
             for z = pos1.z, pos2.z do
                 local p2 = vector.new(x, y, z)
                 local node = minetest.get_node(p2)
-                if minetest.registered_nodes[node.name].walkable then
+                if is_node_walkable(node.name) then
                     local p3 = vector.new(p2.x, p2.y + 1, p2.z)
                     local node2 = minetest.get_node(p3)
                     if minetest.registered_nodes[node2.name].walkable then
@@ -1610,7 +1614,7 @@ end
 local function walkable(node)
     if minetest.registered_nodes[node.name].drawtype == "liquid" then
         return true
-    elseif minetest.registered_nodes[node.name].walkable then
+    elseif is_node_walkable(node.name) then
         return true
     end
     return false
@@ -1707,12 +1711,12 @@ local function get_ground_level(pos2, max_height)
         z = pos2.z
     })
     local height = 0
-    local walkable = minetest.registered_nodes[node_under.name].walkable and not minetest.registered_nodes[node.name].walkable
+    local walkable = is_node_walkable(node_under.name) and not is_node_walkable(node.name)
     if walkable then
         return pos2
     elseif not walkable then
-        if not minetest.registered_nodes[node_under.name].walkable then
-            while not minetest.registered_nodes[node_under.name].walkable
+        if not is_node_walkable(node_under.name) then
+            while not is_node_walkable(node_under.name)
             and height <= max_height do
                 pos2.y = pos2.y - 1
                 node_under = minetest.get_node({
@@ -1723,7 +1727,7 @@ local function get_ground_level(pos2, max_height)
                 height = height + 1
             end
         else
-            while minetest.registered_nodes[node.name].walkable
+            while is_node_walkable(node.name)
             and height <= max_height do
                 pos2.y = pos2.y + 1
                 node = minetest.get_node(pos2)
