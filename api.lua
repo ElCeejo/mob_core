@@ -930,7 +930,7 @@ function mob_core.force_spawn(pos, mob)
                 minetest.forceload_free_block(pos)
             end)
             if loop then
-                force_spawn(pos, mob)
+                mob_core.force_spawn(pos, mob)
             end 
         end)
     end)
@@ -983,8 +983,6 @@ function mob_core.spawn_at_pos(pos, name, nodes, group, optional)
             end
 
             if spawn_mob then
-
-                minetest.chat_send_all(minetest.pos_to_string(mob_pos))
 
                 mob_core.force_spawn(mob_pos, name)
 
