@@ -3,13 +3,14 @@
 ------------------
 ----- Ver 0.1 ----
 
----------------------
--- Local Variables --
----------------------
+----------
+-- Math --
+----------
 
 local random = math.random
 local abs = math.abs
 local ceil = math.ceil
+local floor = math.floor
 
 local vec_dir = vector.direction
 local vec_dist = vector.distance
@@ -20,33 +21,41 @@ local function dist_2d(pos1, pos2)
     return vec_dist(a, b)
 end
 
+--------------
+-- Settings --
+--------------
 
 local creative = minetest.settings:get_bool("creative_mode")
 
-----------------------
--- Helper Functions --
-----------------------
+--------------------
+-- Misc Functions --
+--------------------
 
 local function is_node_walkable(name)
     local def = minetest.registered_nodes[name]
     return def and def.walkable
 end
 
-local function all_first_to_upper(str)
-    str = string.gsub(" " .. str, "%W%l", string.upper):sub(2)
-    return str
+local function is_node_liquid(name)
+    local def = minetest.registered_nodes[name]
+    return def and def.drawtype == "liquid"
 end
-
-local function underscore_to_space(str) return (str:gsub("_", " ")) end
 
 function mob_core.get_name_proper(str)
     if str then
         if str:match(":") then str = str:split(":")[2] end
-        str = all_first_to_upper(str)
-        str = underscore_to_space(str)
-        return str
+        return (string.gsub(" " .. str, "%W%l", string.upper):sub(2):gsub("_", " "))
     end
 end
+
+function mob_core.find_val(tbl, val)
+    for _, v in ipairs(tbl) do if v == val then return true end end
+    return false
+end
+
+-------------------------
+-- Logic-Use Functions --
+-------------------------
 
 function mob_core.is_mobkit_mob(object)
     if type(object) == 'userdata' then object = object:get_luaentity() end
@@ -61,7 +70,16 @@ function mob_core.is_mobkit_mob(object)
     end
 end
 
-function mob_core.shared_owner(self, object)
+function mob_core.is_object_nearby(self, name)
+    for _, obj in ipairs(self.nearby_objects) do
+        if obj and obj:get_luaentity() and obj:get_luaentity().name == name then
+            return true, obj
+        end
+    end
+    return false
+end
+
+function mob_core.check_shared_owner(self, object)
     if not mobkit.is_alive(object) then return false end
     if object:is_player() then return false end
     if type(object) == 'userdata' then object = object:get_luaentity() end
@@ -76,21 +94,7 @@ function mob_core.shared_owner(self, object)
     return false
 end
 
-function mob_core.is_object_nearby(self, name)
-    for _, obj in ipairs(self.nearby_objects) do
-        if obj and obj:get_luaentity() and obj:get_luaentity().name == name then
-            return true, obj
-        end
-    end
-    return false
-end
-
-function mob_core.find_val(tbl, val)
-    for _, v in ipairs(tbl) do if v == val then return true end end
-    return false
-end
-
--- Follow Holding? --
+mob_core.shared_owner = mob_core.check_shared_owner -- Deprecated name support
 
 function mob_core.follow_holding(self, player)
     local item = player:get_wielded_item()
@@ -176,7 +180,7 @@ function mob_core.register_set(mob, background, mask)
 end
 
 -----------------------
--- Utility Functions --
+-- Spatial Functions --
 -----------------------
 
 function mob_core.sensor_floor(self, range, water)
@@ -295,7 +299,7 @@ end
 --  Damage and Vitals --
 ------------------------
 
--- Damage Indication --
+-- Damage Indication
 
 local function flash_red(self)
     minetest.after(0.0, function()
@@ -308,7 +312,7 @@ local function flash_red(self)
     end)
 end
 
--- Death --
+-- Death
 
 function mob_core.on_die(self)
     local pos = mobkit.get_stand_pos(self)
@@ -398,7 +402,7 @@ function mob_core.on_die(self)
     mobkit.queue_high(self, func, 100)
 end
 
--- Vitals --
+-- Vitals
 
 function mob_core.vitals(self)
     if not mobkit.is_alive(self) then return end
@@ -460,7 +464,7 @@ function mob_core.vitals(self)
     end
 end
 
--- Basic Damage -- Flash red, Knockback, Make sound.
+-- Basic Damage
 
 function mob_core.on_punch_basic(self, puncher, tool_capabilities, dir)
     local item = puncher:get_wielded_item()
@@ -490,7 +494,7 @@ function mob_core.on_punch_basic(self, puncher, tool_capabilities, dir)
     end
 end
 
--- Retaliate --
+-- Retaliate
 
 function mob_core.on_punch_retaliate(self, puncher, water, group)
     if mobkit.is_alive(self) then
@@ -525,7 +529,7 @@ function mob_core.on_punch_retaliate(self, puncher, water, group)
     end
 end
 
--- Runaway --
+-- Runaway
 
 function mob_core.on_punch_runaway(self, puncher, water, group)
     if mobkit.is_alive(self) then
@@ -560,7 +564,8 @@ function mob_core.on_punch_runaway(self, puncher, water, group)
     end
 end
 
--- Default On Punch -- Likely won't be used, more of a demo
+-- Default On Punch
+-- This function should only be used for reference.
 
 function mob_core.on_punch(self, puncher, time_from_last_punch,
                            tool_capabilities, dir)
@@ -711,9 +716,8 @@ end
 -- Set Scale --
 
 function mob_core.set_scale(self, scale)
-    self.base_size = self.visual_size
-    self.base_colbox = self.collisionbox
-    self.base_selbox = self.selectionbox
+    self.base_size = self.visual_size or {x = 1, y = 1, z = 1}
+    self.base_colbox = self.collisionbox or {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5}
 
     self.object:set_properties({
         visual_size = {
@@ -735,6 +739,10 @@ function mob_core.set_owner(self, name)
     self.owner = mobkit.remember(self, "owner", name)
 end
 
+--------------
+-- Spawning --
+--------------
+
 -- Spawn Child Mob --
 
 function mob_core.spawn_child(pos, mob)
@@ -747,107 +755,6 @@ function mob_core.spawn_child(pos, mob)
     mob_core.set_textures(luaent)
     return obj
 end
-
--- Force Tame Command --
-
-minetest.register_chatcommand("force_tame", {
-    params = "",
-    description = "tame pointed mobkit mob",
-    privs = {server = true, creative = true},
-    func = function(name)
-        local player = minetest.get_player_by_name(name)
-        if not player then return false end
-        local dir = player:get_look_dir()
-        local pos = player:get_pos()
-        pos.y = pos.y + player:get_properties().eye_height or 1.625
-        local dest = vector.add(pos, vector.multiply(dir, 40))
-        local ray = minetest.raycast(pos, dest, true, false)
-        for pointed_thing in ray do
-            if pointed_thing.type == "object" then
-                local pointedobject = pointed_thing.ref
-                if pointedobject:get_luaentity() then
-                    pointedobject = pointedobject:get_luaentity()
-                    local mob_name =
-                        mob_core.get_name_proper(pointedobject.name)
-                    if not pointedobject.tamed then
-                        if not pointedobject.logic or pointedobject.brainfunc then
-                            minetest.chat_send_player(name,
-                                                      "This command only works on mobkit mobs")
-                            return
-                        end
-                        mob_core.set_owner(pointedobject, name)
-                        minetest.chat_send_player(name, mob_name ..
-                                                      " has been tamed!")
-                        mobkit.clear_queue_high(pointedobject)
-                        pos = pointedobject.object:get_pos()
-                        minetest.add_particlespawner(
-                            {
-                                amount = 16,
-                                time = 0.25,
-                                minpos = {
-                                    x = pos.x - pointedobject.collisionbox[4],
-                                    y = pos.y - pointedobject.collisionbox[4],
-                                    z = pos.z - pointedobject.collisionbox[4]
-                                },
-                                maxpos = {
-                                    x = pos.x + pointedobject.collisionbox[4],
-                                    y = pos.y + pointedobject.collisionbox[4],
-                                    z = pos.z + pointedobject.collisionbox[4]
-                                },
-                                minacc = {x = 0, y = 0.25, z = 0},
-                                maxacc = {x = 0, y = -0.25, z = 0},
-                                minexptime = 0.75,
-                                maxexptime = 1,
-                                minsize = 4,
-                                maxsize = 4,
-                                texture = "mob_core_green_particle.png",
-                                glow = 16
-                            })
-                        return
-                    else
-                        if not pointedobject.logic or pointedobject.brainfunc then
-                            minetest.chat_send_player(name,
-                                                      "This command only works on mobkit mobs")
-                            return
-                        end
-                        mob_core.set_owner(pointedobject, name)
-                        minetest.chat_send_player(name, mob_name ..
-                                                      " has been tamed!")
-                        mobkit.clear_queue_high(pointedobject)
-                        pos = pointedobject.object:get_pos()
-                        minetest.add_particlespawner(
-                            {
-                                amount = 16,
-                                time = 0.25,
-                                minpos = {
-                                    x = pos.x - pointedobject.collisionbox[4],
-                                    y = pos.y - pointedobject.collisionbox[4],
-                                    z = pos.z - pointedobject.collisionbox[4]
-                                },
-                                maxpos = {
-                                    x = pos.x + pointedobject.collisionbox[4],
-                                    y = pos.y + pointedobject.collisionbox[4],
-                                    z = pos.z + pointedobject.collisionbox[4]
-                                },
-                                minacc = {x = 0, y = 0.25, z = 0},
-                                maxacc = {x = 0, y = -0.25, z = 0},
-                                minexptime = 0.75,
-                                maxexptime = 1,
-                                minsize = 4,
-                                maxsize = 4,
-                                texture = "mob_core_green_particle.png",
-                                glow = 16
-                            })
-                        return
-                    end
-                end
-            else
-                minetest.chat_send_player(name, "You must be pointing at a mob.")
-                return
-            end
-        end
-    end
-})
 
 -- Spawning --
 
@@ -914,9 +821,8 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
                     for x = pos1.x, pos2.x do
                         local vi = area:index(x, y, z)
                         local vi_pos = area:position(vi)
-                        local node = minetest.get_node_or_nil(vi_pos)
-                        if node
-                        and is_node_walkable(node.name) then
+                        local vi_name = minetest.get_name_from_content_id(data[vi])
+                        if is_node_walkable(minetest.get_name_from_content_id(data[vi])) then
                             local _vi = area:index(x, y + 1, z)
                             if data[_vi] == minetest.get_content_id("air") then
                                 table.insert(spawner, area:position(_vi))
@@ -1005,13 +911,123 @@ function mob_core.spawn(name, nodes, min_light, max_light, min_height,
     end
 end
 
+function mob_core.force_spawn(pos, mob)
+    minetest.forceload_block(pos, false)
+    minetest.after(4, function()
+        local ent = minetest.add_entity(pos, mob)
+        minetest.after(0.01, function()
+            local loop = true
+            local objects = minetest.get_objects_inside_radius(pos, 0.5)
+            for i = 1, #objects do
+                local object = objects[i]
+                if object
+                and object:get_luaentity()
+                and object:get_luaentity().name == mob then
+                    loop = false
+                end
+            end
+            minetest.after(1, function()
+                minetest.forceload_free_block(pos)
+            end)
+            if loop then
+                force_spawn(pos, mob)
+            end 
+        end)
+    end)
+end
+
+function mob_core.spawn_at_pos(pos, name, nodes, group, optional)
+    group = group or 1
+    if minetest.registered_entities[name] then
+        local spawn_mob = true
+        local mobs_amount = 0
+        for _, entity in pairs(minetest.luaentities) do
+            if entity.name == name then
+                local ent_pos = entity.object:get_pos()
+                if ent_pos
+                and vec_dist(pos, ent_pos) <= 1024 then
+                    mobs_amount = mobs_amount + 1
+                end
+            end
+        end
+
+        if mobs_amount >= mob_limit then spawn_mob = false end
+
+        local int = {-1, 1}
+
+        local pos1 = vector.new(pos.x - 5, pos.y - 5, pos.z - 5)
+        local pos2 = vector.new(pos.x + 5, pos.y + 5, pos.z + 5)
+
+        local spawner = minetest.find_nodes_in_area_under_air(pos1, pos2, mob_core.walkable_nodes)
+
+        if table.getn(spawner) > 0 then
+
+            local mob_pos = spawner[1]
+
+            mob_pos.y = mob_pos.y + 1
+
+            if block_protected_spawn and minetest.is_protected(mob_pos, "") then
+                spawn_mob = false
+            end
+
+            if optional then
+                if optional.biomes then
+                    spawn_mob = false
+                    local biome = mob_core.get_biome_name(mob_pos)
+                    for i = 1, #optional.biomes do
+                        if optional.biomes[i]:match("^" .. biome) then
+                            spawn_mob = true
+                        end
+                    end
+                end
+            end
+
+            if spawn_mob then
+
+                minetest.chat_send_all(minetest.pos_to_string(mob_pos))
+
+                mob_core.force_spawn(mob_pos, name)
+
+                if group then
+
+                    local attempts = 0
+
+                    while attempts < group do
+                        local mobdef = minetest.registered_entities[name]
+                        local side = mobdef.collisionbox[4]
+                        local group_pos =
+                            vector.new(mob_pos.x +
+                                           (random(-group, group) * side),
+                                       mob_pos.y, mob_pos.z +
+                                           (random(-group, group) * side))
+                        local spawn_pos =
+                            minetest.find_nodes_in_area_under_air(
+                                vector.new(group_pos.x, group_pos.y - 8,
+                                           group_pos.z),
+                                vector.new(group_pos.x, group_pos.y + 8,
+                                           group_pos.z), mob_core.walkable_nodes)
+                        if spawn_pos[1] then
+                            mob_core.force_spawn(
+                                vector.new(spawn_pos[1].x, spawn_pos[1].y +
+                                               math.abs(
+                                                   mobdef.collisionbox[2]),
+                                           spawn_pos[1].z), name)
+                        end
+                        attempts = attempts + 1
+                    end
+                end
+            end
+        end
+    end
+end
+
 mob_core.registered_on_spawns = {}
 
 mob_core.registered_spawns = {}
 
 function mob_core.register_spawn(def, interval, chance)
     local spawn_timer = 0
-    mob_core.registered_spawns[def.name] = {func = nil, last_pos = {}}
+    mob_core.registered_spawns[def.name] = {func = nil, last_pos = {}, def = def}
     mob_core.registered_spawns[def.name].func =
         minetest.register_globalstep(function(dtime)
             spawn_timer = spawn_timer + dtime
@@ -1150,59 +1166,6 @@ function mob_core.growth(self, interval)
         self.hp = self.max_hp / 1.5
     end
     self.growth_timer = mobkit.remember(self, "growth_timer", self.growth_timer)
-end
-
--- Breeding --
-
-function mob_core.breed(self)
-    if not mobkit.is_alive(self) then return end
-    if self.breed_timer > 0 then
-        self.breed_timer = self.breed_timer - self.dtime
-    else
-        self.breed_timer = 0
-    end
-    if self.gender == "female" then
-        local pos = self.object:get_pos()
-        local objs = minetest.get_objects_inside_radius(pos,
-                                                        self.collisionbox[4] * 4)
-        for i = 1, #objs do
-            local luaent = objs[i]:get_luaentity()
-            if luaent and luaent.name == self.name then
-                if luaent.breed_mode == true and luaent.gender == "male" then
-                    self.breed_mode = false
-                    self.breed_timer = 300
-                    luaent.breed_mode = false
-                    luaent.breed_timer = 300
-                    minetest.after(2.5, function()
-                        mob_core.spawn_child(pos, self.name)
-                        minetest.add_particlespawner(
-                            {
-                                amount = 16,
-                                time = 0.25,
-                                minpos = {
-                                    x = pos.x - self.collisionbox[4],
-                                    y = pos.y - self.collisionbox[4],
-                                    z = pos.z - self.collisionbox[4]
-                                },
-                                maxpos = {
-                                    x = pos.x + self.collisionbox[4],
-                                    y = pos.y + self.collisionbox[4],
-                                    z = pos.z + self.collisionbox[4]
-                                },
-                                minacc = {x = 0, y = 0.25, z = 0},
-                                maxacc = {x = 0, y = -0.25, z = 0},
-                                minexptime = 0.75,
-                                maxexptime = 1,
-                                minsize = 4,
-                                maxsize = 4,
-                                texture = "heart.png",
-                                glow = 16
-                            })
-                    end)
-                end
-            end
-        end
-    end
 end
 
 -- Step Function --
@@ -1415,7 +1378,7 @@ function mob_core.protect(self, clicker, force_protect)
     return true
 end
 
--- Set Nametag --
+-- Nameing --
 
 local nametag_obj = {}
 local nametag_item = {}
@@ -1441,43 +1404,43 @@ function mob_core.nametag(self, clicker, force_name)
     end
 end
 
-minetest.register_on_player_receive_fields(
-    function(player, formname, fields)
+minetest.register_on_player_receive_fields(function(player, formname, fields)
+    if formname == "mob_core_nametag" and fields.name then
 
-        if formname == "mob_core_nametag" and fields.name then
+        local name = player:get_player_name()
 
-            local name = player:get_player_name()
-
-            if not nametag_obj[name] or not nametag_obj[name].object then
-                return
-            end
-
-            local item = player:get_wielded_item()
-
-            if item:get_name() ~= "mob_core:nametag" then return end
-
-            if string.len(fields.name) > 64 then
-                fields.name = string.sub(fields.name, 1, 64)
-            end
-
-            nametag_obj[name].nametag = mobkit.remember(nametag_obj[name],
-                                                        "nametag", fields.name)
-
-            mob_core.activate_nametag(nametag_obj[name])
-
-            if fields.name ~= "" and not creative then
-                nametag_item[name]:take_item()
-                player:set_wielded_item(nametag_item[name])
-            end
-
-            nametag_obj[name] = nil
-            nametag_item[name] = nil
+        if not nametag_obj[name] or not nametag_obj[name].object then
+            return
         end
-    end)
+
+        local item = player:get_wielded_item()
+
+        if item:get_name() ~= "mob_core:nametag" then return end
+
+        if string.len(fields.name) > 64 then
+            fields.name = string.sub(fields.name, 1, 64)
+        end
+
+        nametag_obj[name].nametag = mobkit.remember(nametag_obj[name],
+                                                    "nametag", fields.name)
+
+        mob_core.activate_nametag(nametag_obj[name])
+
+        if fields.name ~= "" and not creative then
+            nametag_item[name]:take_item()
+            player:set_wielded_item(nametag_item[name])
+        end
+
+        nametag_obj[name] = nil
+        nametag_item[name] = nil
+    end
+end)
 
 -----------------
 -- Pathfinding --
 -----------------
+
+-- Lightweight Pathfinder
 
 local function can_fit(pos, width, single_plane)
     local pos1 = vector.new(pos.x - width, pos.y, pos.z - width)
@@ -1611,97 +1574,9 @@ function mob_core.find_path_lite(pos, tpos, width)
     return path, raw
 end
 
-local function walkable(node)
-    if minetest.registered_nodes[node.name].drawtype == "liquid" then
-        return true
-    elseif is_node_walkable(node.name) then
-        return true
-    end
-    return false
-end
+-- A* Pathfinder with object scale and 3d movement support --
 
-local function get_platform(pos, width)
-    local pos1 = vector.new(pos.x - width, pos.y - 1, pos.z - width)
-    local pos2 = vector.new(pos.x + width, pos.y - 1, pos.z + width)
-    for x = pos1.x, pos2.x do
-        for z = pos1.z, pos2.z do
-            local pltfrm = vector.new(x, pos.y - 1, z)
-            local node = minetest.get_node(pltfrm)
-            local def = minetest.registered_nodes[node.name]
-            if def
-            and def.walkable then
-                local abv_pltfrm = vector.new(x, pos.y, z)
-                local abv_node = minetest.get_node(abv_pltfrm)
-                local abv_def = minetest.registered_nodes[abv_node.name]
-                if abv_def
-                and abv_def.walkable then
-                    return "buried"
-                end
-                return "solid"
-            end
-        end
-    end
-    return "air"
-end
-
-function mob_core.find_path(self, tpos)
-
-    if not mobkit.is_alive(self) or not tpos then return end
-
-    local pos = mobkit.get_stand_pos(self)
-
-    local pos_under = function(v) return vector.new(v.x, v.y - 1, v.z) end
-
-    local width = self.object:get_properties().collisionbox[4]
-
-    if get_platform(pos, width) ~= "solid" then
-
-        local min = vector.new(pos.x - width - 1, pos.y, pos.z - width - 1)
-        local max = vector.new(pos.x - width + 1, pos.y, pos.z - width + 1)
-
-        local index_table = minetest.find_nodes_in_area_under_air(min, max,
-                                                                  mob_core.walkable_nodes)
-        for _, i_pos in pairs(index_table) do
-            i_pos.y = i_pos.y + 1
-            if can_fit(i_pos, width) then
-                pos = vector.new(i_pos.x, i_pos.y + 0.6, i_pos.z)
-                break
-            end
-        end
-    end
-
-    if not walkable(minetest.get_node(pos_under(tpos))) then
-        local min = vector.subtract(tpos, width)
-        local max = vector.add(tpos, width)
-
-        local index_table = minetest.find_nodes_in_area_under_air(min, max,
-                                                                  mob_core.walkable_nodes)
-        for _, i_pos in pairs(index_table) do
-            if walkable(minetest.get_node(i_pos)) then
-                tpos = vector.new(i_pos.x, i_pos.y + 1, i_pos.z)
-                break
-            end
-        end
-    end
-
-    local path = mob_core_pathfinder.find_path(self, pos, tpos, 128, self.dtime)
-
-    if not path then return end
-
-    table.remove(path, 1)
-
-    for i = #path, 1, -1 do
-
-        if path[i] then
-            if (not can_fit(path[i], width, true) and path[i + 1] and
-                path[i + 1].y == path[i].y and i < #path) then
-                table.remove(path, i)
-            end
-        end
-    end
-
-    return path
-end
+local moveable = mob_core.is_moveable
 
 local function get_ground_level(pos2, max_height)
     local node = minetest.get_node(pos2)
@@ -1717,7 +1592,7 @@ local function get_ground_level(pos2, max_height)
     elseif not walkable then
         if not is_node_walkable(node_under.name) then
             while not is_node_walkable(node_under.name)
-            and height <= max_height do
+            and height < max_height do
                 pos2.y = pos2.y - 1
                 node_under = minetest.get_node({
                     x = pos2.x,
@@ -1728,7 +1603,7 @@ local function get_ground_level(pos2, max_height)
             end
         else
             while is_node_walkable(node.name)
-            and height <= max_height do
+            and height < max_height do
                 pos2.y = pos2.y + 1
                 node = minetest.get_node(pos2)
                 height = height + 1
@@ -1738,238 +1613,239 @@ local function get_ground_level(pos2, max_height)
     end
 end
 
-local function reverse(t)
-    local n = #t
-    local i = 1
-    while i < n do
-        t[i],t[n] = t[n],t[i]
-        i = i + 1
-        n = n - 1
+-- Get Distance
+
+local function get_distance(start_pos, end_pos)
+    local distX = abs(start_pos.x - end_pos.x)
+    local distZ = abs(start_pos.z - end_pos.z)
+
+    if distX > distZ then
+        return 14 * distZ + 10 * (distX - distZ)
+    else
+        return 14 * distX + 10 * (distZ - distX)
     end
-    return t
 end
 
-local function closest_num(val, tbl)
-    local n = tbl[1]
-    for i = 1, #tbl do
-        if abs(val - tbl[i]) < abs (val - n) then
-            n = tbl[i]
-        end
+local function get_distance_to_neighbor(start_pos, end_pos)
+    local distX = abs(start_pos.x - end_pos.x)
+    local distY = abs(start_pos.y - end_pos.y)
+    local distZ = abs(start_pos.z - end_pos.z)
+
+    if distX > distZ then
+        return (14 * distZ + 10 * (distX - distZ)) * (distY + 1)
+    else
+        return (14 * distX + 10 * (distZ - distX)) * (distY + 1)
     end
-    return n
 end
 
-local function is_vec_in_tbl(vec, tbl)
-    if not tbl or #tbl < 1 then return false end
-    for i = 1, #tbl do
-        if vector.equals(tbl[i], vec) then
-            return true
-        end
+-- Check if pos is above ground
+
+local function is_on_ground(pos)
+    local ground = {
+        x = pos.x,
+        y = pos.y - 1,
+        z = pos.z
+    }
+    if is_node_walkable(minetest.get_node(ground).name) then
+        return true
     end
     return false
 end
 
-function mob_core.find_dumb_path(self, pos2, step_size, visualize)
-    local pos1 = self.object:get_pos()
-    pos1 = get_ground_level({
-        x = math.floor(pos1.x + 0.5),
-        y = math.floor(pos1.y + 0.5),
-        z = math.floor(pos1.z + 0.5)
-    }, 2)
-    pos2 = get_ground_level({
-        x = math.floor(pos2.x + 0.5),
-        y = math.floor(pos2.y + 0.5),
-        z = math.floor(pos2.z + 0.5)
-    }, 8)
-    local path = {pos2}
-    local neighbors = {
-        {x = step_size, y = 0, z = 0},
-        {x = step_size, y = 0, z = step_size},
-        {x = 0, y = 0, z = step_size},
-        {x = -step_size, y = 0, z = step_size},
-        {x = -step_size, y = 0, z = 0},
-        {x = -step_size, y = 0, z = -step_size},
-        {x = 0, y = 0, z = -step_size},
-        {x = step_size, y = 0, z = -step_size}
-    }
-    local width = ceil(mob_core.get_hitbox(self)[4])
-    local fail_ceil = math.ceil(dist_2d(pos1, pos2) * 1.5)
-    local iter = 1
-    local init_fail = false
-    while dist_2d(path[#path], pos1) > step_size * 1.5
-    and iter < fail_ceil do
-        local candidates = table.copy(neighbors)
-        for i = #candidates, 1, -1  do
-            candidates[i] = get_ground_level(vector.add(path[#path], candidates[i]), self.jump_height or 1.26)
-            if not mob_core.is_moveable(candidates[i], width, self.height - 0.5) then
-                local ground_candid = {
-                    x = candidates[i].x,
-                    y = candidates[i].y + self.jump_height or 1.26,
-                    z = candidates[i].z
-                }
-                if not mob_core.is_moveable(ground_candid, width, self.height - 0.5) then
-                    table.remove(candidates, i)
-                end
-            end
-        end
-        if candidates[1] then
-            table.sort(candidates, function(a, b) return dist_2d(a, pos1) < dist_2d(b, pos1) end)
-            if path[#path - 1]
-            and vector.equals(candidates[1], path[#path - 1]) then -- if we've found a loop
-                init_fail = true
-                break
-            end
-            table.insert(path, candidates[1])
-        end
-        iter = iter + 1
-    end
-    if init_fail then
-        path = {pos1}
-        iter = 1
-        while dist_2d(path[#path], pos2) > step_size * 1.5
-        and iter < fail_ceil do
-            local candidates = table.copy(neighbors)
-            for i = #candidates, 1, -1  do
-                candidates[i] = get_ground_level(vector.add(path[#path], candidates[i]), self.jump_height or 1.26)
-                if not mob_core.is_moveable(candidates[i], width, self.height - 0.5) then
-                    table.remove(candidates, i)
-                end
-            end
-            if candidates[1] then
-                table.sort(candidates, function(a, b) return dist_2d(a, pos2) < dist_2d(b, pos2) end)
-                if path[#path - 1]
-                and vector.equals(candidates[1], path[#path - 1]) then -- if we've found a loop
-                    break
-                end
-                table.insert(path, candidates[1])
-            end
-            iter = iter + 1
-        end
-    end
-    if visualize then
-        for i = 1, #path do
-            minetest.add_particle({
-                pos = path[i],
-                velocity = {x=0, y=0, z=0},
-                acceleration = {x=0, y=0, z=0},
-                expirationtime = 0.1,
-                size = 12,
-                collisiondetection = false,
-                vertical = false,
-                texture = "mob_core_green_particle.png",
-                playername = "singleplayer"
-            })
-        end
-    end
-    if not init_fail then
-        path = reverse(path)
-    end
-    return path
-end
+-- Find a path from start to goal
 
-function mob_core.find_dumb_3d_path(self, pos2, step_size, visualize)
-    local pos1 = self.object:get_pos()
-    pos1 = {
-        x = math.floor(pos1.x + 0.5),
-        y = math.floor(pos1.y + 0.5),
-        z = math.floor(pos1.z + 0.5)
+function mob_core.find_path(start, goal, obj_width, obj_height, max_open, climb, fly, swim)
+    climb = climb or false
+    fly = fly or false
+    swim = swim or false
+
+    local path_neighbors = {
+        {x = 1, y = 0, z = 0},
+        {x = 1, y = 0, z = 1},
+        {x = 0, y = 0, z = 1},
+        {x = -1, y = 0, z = 1},
+        {x = -1, y = 0, z = 0},
+        {x = -1, y = 0, z = -1},
+        {x = 0, y = 0, z = -1},
+        {x = 1, y = 0, z = -1}
     }
-    pos2 = {
-        x = math.floor(pos2.x + 0.5),
-        y = math.floor(pos2.y + 0.5),
-        z = math.floor(pos2.z + 0.5)
-    }
-    local width = ceil(mob_core.get_hitbox(self)[4])
-    local path = {pos2}
-    local neighbors = {
-        {x = step_size, y = 0, z = 0},
-        {x = step_size, y = 0, z = step_size},
-        {x = 0, y = 0, z = step_size},
-        {x = -step_size, y = 0, z = step_size},
-        {x = -step_size, y = 0, z = 0},
-        {x = -step_size, y = 0, z = -step_size},
-        {x = 0, y = 0, z = -step_size},
-        {x = step_size, y = 0, z = -step_size}
-    }
-    local fail_ceil = math.ceil(dist_2d(pos1, pos2) * 1.5)
-    local iter = 1
-    local init_fail = false
-    while vec_dist(path[#path], pos1) > step_size * 1.5
-    and iter < fail_ceil do
-        local candidates = table.copy(neighbors)
-        for i = #candidates, 1, -1  do
-            candidates[i] = vector.add(path[#path], candidates[i])
-            local i_pos = candidates[i]
-            if mob_core.is_moveable({x = i_pos.x, y = i_pos.y + step_size, z = i_pos.z}, width, self.height - 0.5) then
-                table.insert(candidates, {x = i_pos.x, y = i_pos.y + step_size, z = i_pos.z})
+
+    if climb then
+        table.insert(path_neighbors, {x = 0, y = 1, z = 0})
+    end
+
+    if fly
+    or swim then
+        path_neighbors = {
+            -- Central
+            {x = 1, y = 0, z = 0},
+            {x = 0, y = 0, z = 1},
+            {x = -1, y = 0, z = 0},
+            {x = 0, y = 0, z = -1},
+            -- Up
+            {x = 1, y = 1, z = 0},
+            {x = 0, y = 1, z = 1},
+            {x = -1, y = 1, z = 0},
+            {x = 0, y = 1, z = -1},
+            -- Down
+            {x = 1, y = 1, z = 0},
+            {x = 0, y = 1, z = 1},
+            {x = -1, y = 1, z = 0},
+            {x = 0, y = 1, z = -1},
+            -- Directly Up or Down
+            {x = 0, y = 1, z = 0},
+            {x = 0, y = -1, z = 0}
+        }
+    end
+
+    local function get_neighbors(pos, width, height, tbl, open, closed)
+        local result = {}
+        for i = 1, #tbl do
+            local neighbor = vector.add(pos, tbl[i])
+            if neighbor.y == pos.y
+            and not fly
+            and not swim then
+                neighbor = get_ground_level(neighbor, 1)
             end
-            if mob_core.is_moveable({x = i_pos.x, y = i_pos.y - step_size, z = i_pos.z}, width, self.height - 0.5) then
-                table.insert(candidates, {x = i_pos.x, y = i_pos.y - step_size, z = i_pos.z})
+            local line_of_sight = minetest.line_of_sight({x = pos.x, y = neighbor.y, z = pos.z}, neighbor)
+            if swim then
+                line_of_sight = true
             end
-            if not mob_core.is_moveable(i_pos, width, self.height - 0.5) then
-                table.remove(candidates, i)
+            if (parent_pos
+            and dist_2d(pos, neighbor) == dist_2d(parent_pos, neighbor))
+            or open[minetest.hash_node_position(neighbor)]
+            or closed[minetest.hash_node_position(neighbor)] then
+                line_of_sight = false
+            end
+            if line_of_sight
+            and moveable(neighbor, width, height)
+            and ((is_on_ground(neighbor)
+            or (fly or swim))
+            or (neighbor.x == pos.x
+            and neighbor.z == pos.z
+            and climb))
+            and (not swim
+            or is_node_liquid(minetest.get_node(neighbor).name)) then
+                table.insert(result, neighbor)
             end
         end
-        if candidates[1] then
-            table.sort(candidates, function(a, b) return vec_dist(a, pos1) < vec_dist(b, pos1) end)
-            if path[#path - 1]
-            and vector.equals(candidates[1], path[#path - 1]) then -- if we've found a loop
-                init_fail = true
+        return result
+    end
+
+    local function find_path(start, goal)
+
+        start = {
+            x = floor(start.x + 0.5),
+            y = floor(start.y + 0.5),
+            z = floor(start.z + 0.5)
+        }
+    
+        goal = {
+            x = floor(goal.x + 0.5),
+            y = floor(goal.y + 0.5),
+            z = floor(goal.z + 0.5)
+        }
+
+        if goal.x == start.x
+        and goal.z == start.z then -- No path can be found
+            return nil
+        end
+    
+        local openSet = {}
+    
+        local closedSet = {}
+    
+        local start_index = minetest.hash_node_position(start)
+    
+        openSet[start_index] = {
+            pos = start,
+            parent = nil,
+            gScore = 0,
+            fScore = get_distance(start, goal)
+        }
+    
+        local count = 1
+    
+        while count > 0 do
+            -- Initialize ID and data
+            local current_id
+            local current
+    
+            -- Get an initial id in open set
+            for i, v in pairs(openSet) do
+                current_id = i
+                current = v
                 break
             end
-            table.insert(path, candidates[1])
-        end
-        iter = iter + 1
-    end
-    if init_fail then
-        path = {pos1}
-        iter = 1
-        while vec_dist(path[#path], pos2) > step_size * 1.5
-        and iter < fail_ceil do
-            local candidates = table.copy(neighbors)
-            for i = #candidates, 1, -1  do
-                candidates[i] = vector.add(path[#path], candidates[i])
-                local i_pos = candidates[i]
-                if mob_core.is_moveable({x = i_pos.x, y = i_pos.y + step_size, z = i_pos.z}, width, self.height - 0.5) then
-                    table.insert(candidates, {x = i_pos.x, y = i_pos.y + step_size, z = i_pos.z})
-                end
-                if mob_core.is_moveable({x = i_pos.x, y = i_pos.y - step_size, z = i_pos.z}, width, self.height - 0.5) then
-                    table.insert(candidates, {x = i_pos.x, y = i_pos.y - step_size, z = i_pos.z})
-                end
-                if not mob_core.is_moveable(i_pos, width, self.height - 0.5) then
-                    table.remove(candidates, i)
+    
+            -- Find lowest f cost
+            for i, v in pairs(openSet) do
+                if v.fScore < current.fScore then
+                    current_id = i
+                    current = v
                 end
             end
-            if candidates[1] then
-                table.sort(candidates, function(a, b) return vec_dist(a, pos2) < vec_dist(b, pos2) end)
-                if path[#path - 1]
-                and vector.equals(candidates[1], path[#path - 1]) then -- if we've found a loop
-                    break
+    
+            -- Add lowest fScore to closedSet and remove from openSet
+            openSet[current_id] = nil
+            closedSet[current_id] = current
+    
+            -- Reconstruct path if end is reached
+            if (is_on_ground(goal)
+            and current_id == minetest.hash_node_position(goal))
+            or (not is_on_ground(goal)
+            and goal.x == current.pos.x
+            and goal.z == current.pos.z) then
+                local path = {}
+                local fail_safe = 0
+                for k, v in pairs(closedSet) do
+                    fail_safe = fail_safe + 1
                 end
-                table.insert(path, candidates[1])
+                repeat
+                    if not closedSet[current_id] then return end
+                    table.insert(path, closedSet[current_id].pos)
+                    current_id = closedSet[current_id].parent
+                until current_id == start_index or #path >= fail_safe
+                table.insert(path, closedSet[current_id].pos)
+                local reverse_path = {}
+                repeat table.insert(reverse_path, table.remove(path)) until #path == 0
+                return reverse_path
             end
-            iter = iter + 1
+    
+            count = count - 1
+    
+            local adjacent = get_neighbors(current.pos, obj_width, obj_height, path_neighbors, openSet, closedSet)
+    
+            -- Go through neighboring nodes
+            for i = 1, #adjacent do
+                local neighbor = {
+                    pos = adjacent[i],
+                    parent = current_id,
+                    gScore = 0,
+                    fScore = 0
+                }
+                temp_gScore = current.gScore + get_distance_to_neighbor(current.pos, neighbor.pos)
+                local new_gScore = 0
+                if openSet[minetest.hash_node_position(neighbor.pos)] then
+                    new_gScore = openSet[minetest.hash_node_position(neighbor.pos)].gScore
+                end
+                if (temp_gScore < new_gScore
+                or not openSet[minetest.hash_node_position(neighbor.pos)])
+                and not closedSet[minetest.hash_node_position(neighbor.pos)] then
+                    if not openSet[minetest.hash_node_position(neighbor.pos)] then
+                        count = count + 1
+                    end
+                    local hCost = get_distance_to_neighbor(neighbor.pos, goal)
+                    neighbor.gScore = temp_gScore
+                    neighbor.fScore = temp_gScore + hCost
+                    openSet[minetest.hash_node_position(neighbor.pos)] = neighbor
+                end
+            end
+            if count > (max_open or 100) then return end
         end
+        return nil
     end
-    if visualize then
-        for i = 1, #path do
-            minetest.add_particle({
-                pos = path[i],
-                velocity = {x=0, y=0, z=0},
-                acceleration = {x=0, y=0, z=0},
-                expirationtime = 0.1,
-                size = 12,
-                collisiondetection = false,
-                vertical = false,
-                texture = "mob_core_green_particle.png",
-                playername = "singleplayer"
-            })
-        end
-    end
-    if not init_fail then
-        path = reverse(path)
-    end
-    return path
+    return find_path(start, goal)
 end
 
 ---------------------------
@@ -1982,3 +1858,104 @@ function mobkit.turn2yaw(self, tyaw, rate)
     old_turn2yaw(self, tyaw, rate)
     self._tyaw = tyaw
 end
+
+-- Force Tame Command --
+
+minetest.register_chatcommand("force_tame", {
+    params = "",
+    description = "tame pointed mobkit mob",
+    privs = {server = true, creative = true},
+    func = function(name)
+        local player = minetest.get_player_by_name(name)
+        if not player then return false end
+        local dir = player:get_look_dir()
+        local pos = player:get_pos()
+        pos.y = pos.y + player:get_properties().eye_height or 1.625
+        local dest = vector.add(pos, vector.multiply(dir, 40))
+        local ray = minetest.raycast(pos, dest, true, false)
+        for pointed_thing in ray do
+            if pointed_thing.type == "object" then
+                local pointedobject = pointed_thing.ref
+                if pointedobject:get_luaentity() then
+                    pointedobject = pointedobject:get_luaentity()
+                    local mob_name =
+                        mob_core.get_name_proper(pointedobject.name)
+                    if not pointedobject.tamed then
+                        if not pointedobject.logic or pointedobject.brainfunc then
+                            minetest.chat_send_player(name,
+                                                      "This command only works on mobkit mobs")
+                            return
+                        end
+                        mob_core.set_owner(pointedobject, name)
+                        minetest.chat_send_player(name, mob_name ..
+                                                      " has been tamed!")
+                        mobkit.clear_queue_high(pointedobject)
+                        pos = pointedobject.object:get_pos()
+                        minetest.add_particlespawner(
+                            {
+                                amount = 16,
+                                time = 0.25,
+                                minpos = {
+                                    x = pos.x - pointedobject.collisionbox[4],
+                                    y = pos.y - pointedobject.collisionbox[4],
+                                    z = pos.z - pointedobject.collisionbox[4]
+                                },
+                                maxpos = {
+                                    x = pos.x + pointedobject.collisionbox[4],
+                                    y = pos.y + pointedobject.collisionbox[4],
+                                    z = pos.z + pointedobject.collisionbox[4]
+                                },
+                                minacc = {x = 0, y = 0.25, z = 0},
+                                maxacc = {x = 0, y = -0.25, z = 0},
+                                minexptime = 0.75,
+                                maxexptime = 1,
+                                minsize = 4,
+                                maxsize = 4,
+                                texture = "mob_core_green_particle.png",
+                                glow = 16
+                            })
+                        return
+                    else
+                        if not pointedobject.logic or pointedobject.brainfunc then
+                            minetest.chat_send_player(name,
+                                                      "This command only works on mobkit mobs")
+                            return
+                        end
+                        mob_core.set_owner(pointedobject, name)
+                        minetest.chat_send_player(name, mob_name ..
+                                                      " has been tamed!")
+                        mobkit.clear_queue_high(pointedobject)
+                        pos = pointedobject.object:get_pos()
+                        minetest.add_particlespawner(
+                            {
+                                amount = 16,
+                                time = 0.25,
+                                minpos = {
+                                    x = pos.x - pointedobject.collisionbox[4],
+                                    y = pos.y - pointedobject.collisionbox[4],
+                                    z = pos.z - pointedobject.collisionbox[4]
+                                },
+                                maxpos = {
+                                    x = pos.x + pointedobject.collisionbox[4],
+                                    y = pos.y + pointedobject.collisionbox[4],
+                                    z = pos.z + pointedobject.collisionbox[4]
+                                },
+                                minacc = {x = 0, y = 0.25, z = 0},
+                                maxacc = {x = 0, y = -0.25, z = 0},
+                                minexptime = 0.75,
+                                maxexptime = 1,
+                                minsize = 4,
+                                maxsize = 4,
+                                texture = "mob_core_green_particle.png",
+                                glow = 16
+                            })
+                        return
+                    end
+                end
+            else
+                minetest.chat_send_player(name, "You must be pointing at a mob.")
+                return
+            end
+        end
+    end
+})

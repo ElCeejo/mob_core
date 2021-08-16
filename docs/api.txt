@@ -1,0 +1,190 @@
+------------------
+-- Mob Core API --
+------------------
+------ Alpha -----
+
+Notes:
+- 'self' always refers to a luaentity
+- clicker alreays refers to a playerref
+
+--------------------
+-- Misc Functions --
+--------------------
+
+mob_core.get_name_proper(string)
+	- returns 'string' as human readable text
+	- ex. "mobs:saltwater_crocodile" is converted to "Saltwater Crocodile"
+
+mob_core.find_val(table, value)
+	- returns true is 'value' is found in 'table'
+
+-------------------------
+-- Logic-Use Functions --
+-------------------------
+
+mob_core.is_mobkit_mob(object)
+	- returns true if 'object' uses mobkit api
+
+mob_core.is_object_nearby(self, name) - likely to be deprecated
+	- returns true if the mob specified by 'name' is found in self.nearby_objects
+
+mob_core.check_shared_owner(self, object)
+	- returns true if mob and 'object' share an owner
+
+mob_core.follow_holding(self, player)
+	- returns true if 'player' is holding self.follow/an item in self.follow
+
+-----------------------
+-- Spatial Functions --
+-----------------------
+
+mob_core.sensor_floor(self, range, water)
+	- returns distance to solid ground
+	- maximum range is specified with 'range'
+	- if 'water' is true, all liquids will be treated as solid ground
+
+mob_core.is_moveable(pos, width, height)
+	- returns true if a box with dimensions specified with 'width' and 'height can fit at 'pos'
+
+mob_core.make_sound(self, sound)
+	- similar to mobkit.make_sound, but heightens child sound pitch if specified in entity definition
+
+mob_core.random_sound(self, chance)
+	- 1 in 'chance' probability to play random sound
+
+mob_core.item_drop(self)
+	- items will be dropped as specified in self.drops
+
+mob_core.on_die(self)
+	- called when 'self' dies
+
+mob_core.vitals(self)
+	- should be called every 1 second
+	- handles fall/fire/drowning damage
+
+mob_core.on_punch_basic(self, puncher, tool_capabilities, dir)
+	- all params should be obtained from on_punch
+	- applies knockback and damage if applicable
+
+-----------------
+-- On Activate --
+-----------------
+
+mob_core.activate_nametag(self)
+	- always called in mob_core.on_activate
+	- applies self.nametag
+
+mob_core.set_textures(self)
+	- applies gender/child specific textures
+
+mob_core.on_activate(self, staticdata, dtime_s)
+	- required for most mob_core functionality to work
+	- replaces mobkit.actfunc
+
+-----------------------
+-- Utility Functions --
+-----------------------
+
+mob_core.set_scale(self, scale)
+	- sets mobs sizeas a multiple of visual_size.x/y in entity definition
+	- ex. if the entities visual_size == {x = 2, y = 2}, a 'scale' of 3 will set it to{x = 6, y = 6}
+
+mob_core.set_owner(self, name)
+	- 'name' should be a existing players name
+	- sets mobs owner to 'name'
+
+--------------
+-- Spawning --
+--------------
+
+mob_core.spawn_child(pos, mob)
+	- 'mob' is the name of the mob to spawn
+	- spawns a mob with child presets at 'pos' and returns an objectref
+
+mob_core.get_biome_name(pos)
+	- returns the name of the biome at 'pos'
+
+mob_core.force_spawn(pos, mob)
+	- 'mob' is the name of the mob to spawn
+	- repeatedly attempts to spawn a mob at 'pos' until it succeeds
+
+mob_core.register_spawn(def, interval, chance)
+	- 'def' is a table of spawn parameters
+	- ex. {
+		name = 'string', -- name of mob to spawn
+		nodes = 'table', -- table of nodes and/or groups to spawn on
+		min_light = 'number', -- minimum light level
+		max_light = 'number', -- maximum light level
+		min_height = 'number', -- minimum height/y coord
+		max_height = 'number', -- maximum height/y coord
+		min_rad = 'number', -- minimum radius around player to attempt spawning
+		max_rad = 'number', -- maximum radius around player to attempt spawning
+		group  = 'number', -- amount of extra mobs to spawn
+		optional = 'table', -- optional contains optional parameters with no default value
+		-- only optional param as of 8/15/2021 is biomes, a table containing names of biomes the mob can spawn in
+	}
+	- 'interval' is the time in seconds between spawn attempts
+	- 'chance' is a 1 in x probability for a spawn attempt to go through
+
+-------------
+-- On Step --
+-------------
+
+mob_core.on_step(self, dtime, moveresult)
+	- required for most mob_core functionality to work
+	- replaces mobkit.stepfunc
+
+--------------------------
+-- Rightclick Functions --
+--------------------------
+
+mob_core.mount(self, clicker)
+	- attaches 'clicker' to 'self'
+	- sets self.status to "ridden"
+
+mob_core.capture_mob(self, clicker, capture_tool, capture_chance, wear, force_take) - likely to be deprecated or rewritten
+	- only works if mob has a captured item
+	- adds captured item to 'clicker's inventory
+	- 'capture_tool' is the specific item needed to capture the mob (leave as "" for mob to capturable by hand)
+	- 'capture_chance' is a 1 in x probability for the mob to caught 
+	- 'wear' is the amount of wear to add to the tool used (leave empty if item shouldn't be worn)
+	- 'force_take' is boolean. If true the mob can be caught even if 'clicker' isn't the mobs owner
+
+mob_core.feed_tame(self, clicker, feed_count, tame, breed)
+	- handles feeding, taming, and breeding
+	- 'feed_count' is the amount of food needed to tame and/or breed the mob
+	- 'tame' is boolean. If true true, mob can be tamed
+	- 'breed' is boolean. If true, the mob can be bred
+
+mob_core.protect(self, clicker, force_protect)
+	- sets self.protected to true if the mob is clicked with a Protection Gem
+	- 'force_protect' is boolean. If true, mob can be protected if 'clicker' isn't the mobs owner
+
+mob_core.nametag(self, clicker, force_name)
+	- opens nametag formspec
+	- 'force_name' is boolean. If true, mob can be named if 'clicker' isn't the mobs owner
+
+-----------------
+-- Pathfinding --
+-----------------
+
+mob_core.find_path(start, goal, obj_width, obj_height, max_open, climb, fly, swim)
+	- 'start' is the beginning of the path. This should usually be the mobs standing position
+	- 'goal' is the position to find path to
+	- 'obj_width' is the width of the mobs collisionbox (4th index of the collisionbox - 0.1 is usually optimal)
+	- 'obj_height' is the height of the mobs collisionbox (self.height is usually optimal)
+	- 'max_open' is the maximum amount of items in the open set (higher limit means longer possible paths, but more potential lag)
+	- 'climb' is boolean. If true, paths can go up walls
+	- 'fly is boolean. If true, paths will can be found through air without needing to touch solid ground
+	- 'swim' is boolean. If true, paths can be found through liquid
+	- NOTE: It is recommended to have max_open set to 3x what you would normally use if you have 'fly' or 'swim' set to true.
+
+
+--------------
+-- Commands --
+--------------
+
+"force_tame"
+	- sets pointed mobs owner to the user
+	- maximum range of 40 nodes
+	- requires "server" and "creative" privs

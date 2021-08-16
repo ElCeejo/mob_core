@@ -68,6 +68,7 @@ end)
 
 function mob_core.attach(entity, player)
     entity.player_rotation = entity.player_rotation or {x = 0, y = 0, z = 0}
+    entity.driver_attach_bone = entity.driver_attach_bone or ""
     entity.driver_attach_at = entity.driver_attach_at or {x = 0, y = 0, z = 0}
     entity.driver_eye_offset = entity.driver_eye_offset or
                                    {
@@ -80,7 +81,7 @@ function mob_core.attach(entity, player)
     local eye_offset = entity.driver_eye_offset[1] or {x = 0, y = 0, z = 0}
     local eye_offset_3p = entity.driver_eye_offset[2] or {x = 0, y = 0, z = 0}
     entity.driver = player
-    player:set_attach(entity.object, "", attach_at, entity.player_rotation)
+    player:set_attach(entity.object, entity.driver_attach_bone, attach_at, entity.player_rotation)
     if player_attached ~= nil then
         player_attached[player:get_player_name()] = true
     end

@@ -2,7 +2,7 @@
 block_protected_spawn (Block Spawning in Protected Areas) bool true
 
 #    Sets the limit for amount of mobs in area (of a single name)
-mob_limit (Mob Limit) float 4
+mob_limit (Mob Limit) float 6
 
 #    Allows for large mobs to jump on pre-5.3 clients
 legacy_jump (Legacy node jumping. For pre-5.3 clients) bool false

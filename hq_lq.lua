@@ -309,6 +309,56 @@ function mob_core.lq_dumb_punch(self, target, anim)
     mobkit.queue_low(self, func)
 end
 
+function mob_core.lq_follow_path(self, path, speed_factor, anim)
+    anim = anim or "walk"
+    local timer = #path
+    local func = function(self)
+        if #path <= 1 then
+            return true
+        end
+        local speed = speed_factor or 1
+        local path_iter = 1
+        local width = ceil(hitbox(self)[4])
+        if #path >= width then
+            path_iter = width
+        end
+        local pos = mobkit.get_stand_pos(self)
+        local tpos = path[path_iter]
+        local dir = vector.direction(pos, tpos)
+        local total_dist = vec_dist(pos, path[#path])
+
+        if total_dist <= width + 0.5 then
+            return true
+        end
+
+        if not self.isonground then
+            speed = speed * 0.5
+        end
+
+        if vec_dist(pos, tpos) <= width + 0.5
+        or (path[path_iter + 1]
+        and vec_dist(pos, path[path_iter + 1]) <= width + 0.5) then
+            table.remove(path, 1)
+            timer = timer - 1
+        end
+
+        local turn_rate = self.turn_rate or 8
+
+        if vector.distance(pos, tpos) < width + 2 then
+            turn_rate = turn_rate + 2
+        end
+
+        timer = timer - self.dtime
+
+        if timer <= 0 then return true end
+
+        mobkit.turn2yaw(self, minetest.dir_to_yaw(dir), turn_rate)
+        mobkit.go_forward_horizontal(self, self.max_speed * speed)
+        mobkit.animate(self, anim)
+    end
+    mobkit.queue_low(self, func)
+end
+
 ------------
 -- Aerial --
 ------------
@@ -1272,7 +1322,41 @@ end
 
 -- Dumbstep -- Modified to use new jump mechanic
 
-function mob_core.lq_dumbwalk(self, dest, speed_factor, anim)
+function mob_core.lq_dumbwalk(self, tpos, speed_factor, anim)
+    anim = anim or "walk"
+    local timer = 2
+    local func = function(self)
+        local speed = speed_factor or 1
+        local pos = mobkit.get_stand_pos(self)
+        local dir = vector.direction(pos, tpos)
+        local dist = vec_dist(pos, tpos)
+
+        if dist <= 0.75 then
+            return true
+        end
+
+        if not self.isonground then
+            speed = speed * 0.5
+        end
+
+        local turn_rate = self.turn_rate or 8
+
+        if dist < 2.5 then
+            turn_rate = turn_rate + 2
+        end
+
+        timer = timer - self.dtime
+
+        if timer <= 0 then return true end
+
+        mobkit.turn2yaw(self, minetest.dir_to_yaw(dir), turn_rate)
+        mobkit.go_forward_horizontal(self, self.max_speed * speed)
+        mobkit.animate(self, anim)
+    end
+    mobkit.queue_low(self, func)
+end
+
+--[[function mob_core.lq_dumbwalk(self, dest, speed_factor, anim)
     local timer = 3 -- failsafe
     local width = mob_core.get_hitbox(self)[4]
     speed_factor = speed_factor or 1
@@ -1313,7 +1397,7 @@ function mob_core.lq_dumbwalk(self, dest, speed_factor, anim)
         end
     end
     mobkit.queue_low(self, func)
-end
+end]]
 
 function mob_core.dumbstep(self, tpos, speed_factor, idle_duration)
     mobkit.lq_turn2pos(self, tpos)
