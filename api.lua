@@ -1200,8 +1200,7 @@ end
 
 -- Capture Mob --
 
-function mob_core.capture_mob(self, clicker, capture_tool, capture_chance, wear,
-                              force_take)
+function mob_core.capture_mob(self, clicker, capture_tool, capture_chance, wear, force_take)
     if not clicker:is_player() or not clicker:get_inventory() then
         return false
     end
