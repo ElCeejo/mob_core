@@ -1325,13 +1325,14 @@ end
 function mob_core.lq_dumbwalk(self, tpos, speed_factor, anim)
     anim = anim or "walk"
     local timer = 2
+    local width = mob_core.get_hitbox(self)[4]
     local func = function(self)
         local speed = speed_factor or 1
         local pos = mobkit.get_stand_pos(self)
         local dir = vector.direction(pos, tpos)
         local dist = vec_dist(pos, tpos)
 
-        if dist <= 0.75 then
+        if mobkit.isnear2d(pos, tpos, clamp(width * 0.3125, 0.25, 1.5)) then
             return true
         end
 
