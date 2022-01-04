@@ -1852,8 +1852,8 @@ end
 local old_turn2yaw = mobkit.turn2yaw
 
 function mobkit.turn2yaw(self, tyaw, rate)
-    old_turn2yaw(self, tyaw, rate)
     self._tyaw = tyaw
+    return old_turn2yaw(self, tyaw, rate)
 end
 
 -- Force Tame Command --
